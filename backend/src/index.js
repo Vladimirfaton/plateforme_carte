@@ -6,7 +6,6 @@ import { errorHandler, notFound } from './middleware/errorHandler.js';
 import authRoutes from './routes/authRoutes.js';
 import collegeRoutes from './routes/collegeRoutes.js';
 import classRoutes from './routes/classRoutes.js';
-import groupRoutes from './routes/groupRoutes.js';
 import studentRoutes from './routes/studentRoutes.js';
 import cardRoutes from './routes/cardRoutes.js';
 import locationRoutes from './routes/locationRoutes.js';
@@ -38,7 +37,6 @@ app.use((req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/colleges', collegeRoutes);
 app.use('/api/classes', classRoutes);
-app.use('/api/groups', groupRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/cards', cardRoutes);
 app.use('/api/locations', locationRoutes);

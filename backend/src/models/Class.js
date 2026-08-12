@@ -2,16 +2,19 @@ import { query } from '../config/database.js';
 import { v4 as uuidv4 } from 'uuid';
 
 export class Class {
-  static async create(collegeId, data) {
-    const { code, niveau, effectif_previsionnel } = data;
+  static buildCode(niveau, serie) {
+    return `${niveau.trim()}-${serie.trim().toUpperCase()}`;
+  }
+
+  static async create(collegeId, { niveau, serie }) {
     const id = uuidv4();
-    const createdAt = new Date();
+    const code = this.buildCode(niveau, serie);
 
     const result = await query(
-      `INSERT INTO classes (id, college_id, code, niveau, effectif_previsionnel, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO classes (id, college_id, niveau, serie, code, created_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
        RETURNING *`,
-      [id, collegeId, code, niveau, effectif_previsionnel, createdAt]
+      [id, collegeId, niveau.trim(), serie.trim().toUpperCase(), code]
     );
 
     return result.rows[0];
@@ -19,7 +22,12 @@ export class Class {
 
   static async findByCollege(collegeId) {
     const result = await query(
-      `SELECT * FROM classes WHERE college_id = $1 ORDER BY code ASC`,
+      `SELECT c.*, COUNT(e.id)::int AS effectif
+       FROM classes c
+       LEFT JOIN eleves e ON e.classe_id = c.id
+       WHERE c.college_id = $1
+       GROUP BY c.id
+       ORDER BY c.niveau ASC, c.serie ASC`,
       [collegeId]
     );
     return result.rows;
@@ -27,23 +35,36 @@ export class Class {
 
   static async findById(id) {
     const result = await query(
-      'SELECT * FROM classes WHERE id = $1',
+      `SELECT c.*, COUNT(e.id)::int AS effectif
+       FROM classes c
+       LEFT JOIN eleves e ON e.classe_id = c.id
+       WHERE c.id = $1
+       GROUP BY c.id`,
       [id]
     );
     return result.rows[0];
   }
 
-  static async update(id, data) {
-    const { code, niveau, effectif_previsionnel } = data;
+  static async findDuplicate(collegeId, niveau, serie, excludeId = null) {
+    const params = [collegeId, niveau.trim(), serie.trim().toUpperCase()];
+    let sql = `SELECT id FROM classes WHERE college_id = $1 AND niveau = $2 AND serie = $3`;
+    if (excludeId) {
+      params.push(excludeId);
+      sql += ` AND id <> $4`;
+    }
+    const result = await query(sql, params);
+    return result.rows[0];
+  }
 
+  static async update(id, { niveau, serie }) {
+    const code = this.buildCode(niveau, serie);
     const result = await query(
-      `UPDATE classes 
-       SET code = $1, niveau = $2, effectif_previsionnel = $3, updated_at = NOW()
+      `UPDATE classes
+       SET niveau = $1, serie = $2, code = $3, updated_at = NOW()
        WHERE id = $4
        RETURNING *`,
-      [code, niveau, effectif_previsionnel, id]
+      [niveau.trim(), serie.trim().toUpperCase(), code, id]
     );
-
     return result.rows[0];
   }
 

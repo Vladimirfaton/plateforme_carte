@@ -1,5 +1,4 @@
 import { Student } from '../models/Student.js';
-import { Group } from '../models/Group.js';
 import { Class } from '../models/Class.js';
 import { College } from '../models/College.js';
 import logger from '../config/logger.js';

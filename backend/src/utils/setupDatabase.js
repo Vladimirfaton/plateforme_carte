@@ -5,7 +5,6 @@ const createTables = async () => {
   try {
     logger.info('Creating database tables...');
 
-    // Table users
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id UUID PRIMARY KEY,
@@ -16,9 +15,17 @@ const createTables = async () => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    logger.info('✓ Table users créée');
 
-    // Table colleges
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS otps (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        email VARCHAR(255) NOT NULL,
+        code VARCHAR(6) NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     await pool.query(`
       CREATE TABLE IF NOT EXISTS colleges (
         id UUID PRIMARY KEY,
@@ -34,44 +41,35 @@ const createTables = async () => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    logger.info('✓ Table colleges créée');
 
-    // Table classes
+    await pool.query('DROP TABLE IF EXISTS brouillons_cartes CASCADE');
+    await pool.query('DROP TABLE IF EXISTS eleves CASCADE');
+    await pool.query('DROP TABLE IF EXISTS groupes CASCADE');
+    await pool.query('DROP TABLE IF EXISTS classes CASCADE');
+
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS classes (
+      CREATE TABLE classes (
         id UUID PRIMARY KEY,
         college_id UUID NOT NULL REFERENCES colleges(id) ON DELETE CASCADE,
-        code VARCHAR(50) NOT NULL,
-        niveau VARCHAR(50),
-        effectif_previsionnel INTEGER,
+        niveau VARCHAR(50) NOT NULL,
+        serie VARCHAR(20) NOT NULL,
+        code VARCHAR(80) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT uniq_classe_college UNIQUE (college_id, niveau, serie)
       )
     `);
-    logger.info('✓ Table classes créée');
 
-    // Table groupes
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS groupes (
+      CREATE TABLE eleves (
         id UUID PRIMARY KEY,
         classe_id UUID NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
-        lettre VARCHAR(1) NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-    logger.info('✓ Table groupes créée');
-
-    // Table eleves
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS eleves (
-        id UUID PRIMARY KEY,
-        groupe_id UUID NOT NULL REFERENCES groupes(id) ON DELETE CASCADE,
         matricule VARCHAR(50) UNIQUE NOT NULL,
         nom VARCHAR(255) NOT NULL,
         prenom VARCHAR(255) NOT NULL,
-        date_naissance DATE,
         sexe VARCHAR(1),
+        date_naissance DATE,
+        lieu_naissance VARCHAR(255),
         nationalite VARCHAR(255),
         adresse TEXT,
         telephone VARCHAR(20),
@@ -80,11 +78,9 @@ const createTables = async () => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    logger.info('✓ Table eleves créée');
 
-    // Table brouillons_cartes
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS brouillons_cartes (
+      CREATE TABLE brouillons_cartes (
         id UUID PRIMARY KEY,
         college_id UUID NOT NULL REFERENCES colleges(id) ON DELETE CASCADE,
         classe_id UUID NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
@@ -96,17 +92,13 @@ const createTables = async () => {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    logger.info('✓ Table brouillons_cartes créée');
 
-    // Créer indexes
     await pool.query('CREATE INDEX IF NOT EXISTS idx_colleges_commune ON colleges(commune, departement)');
     await pool.query('CREATE INDEX IF NOT EXISTS idx_classes_college ON classes(college_id)');
-    await pool.query('CREATE INDEX IF NOT EXISTS idx_groupes_classe ON groupes(classe_id)');
-    await pool.query('CREATE INDEX IF NOT EXISTS idx_eleves_groupe ON eleves(groupe_id)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_eleves_classe ON eleves(classe_id)');
     await pool.query('CREATE INDEX IF NOT EXISTS idx_eleves_matricule ON eleves(matricule)');
-    logger.info('✓ Indexes créés');
 
-    logger.info('✅ Database setup completed successfully');
+    logger.info('Database setup completed');
   } catch (error) {
     logger.error(`Database setup error: ${error.message}`);
     process.exit(1);

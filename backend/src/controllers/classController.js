@@ -1,15 +1,14 @@
 import { Class } from '../models/Class.js';
-import { Group } from '../models/Group.js';
 import { College } from '../models/College.js';
 import logger from '../config/logger.js';
 
 export const createClass = async (req, res) => {
   try {
     const { collegeId } = req.params;
-    const { code, niveau, effectif_previsionnel } = req.body;
+    const { niveau, serie } = req.body;
 
-    if (!code || !niveau) {
-      return res.status(400).json({ error: 'Code et niveau requis' });
+    if (!niveau || !serie) {
+      return res.status(400).json({ error: 'Niveau et série requis' });
     }
 
     const college = await College.findById(collegeId);
@@ -17,17 +16,16 @@ export const createClass = async (req, res) => {
       return res.status(404).json({ error: 'Collège non trouvé' });
     }
 
-    const newClass = await Class.create(collegeId, {
-      code,
-      niveau,
-      effectif_previsionnel,
-    });
+    const duplicate = await Class.findDuplicate(collegeId, niveau, serie);
+    if (duplicate) {
+      return res.status(409).json({
+        error: `La classe ${Class.buildCode(niveau, serie)} existe déjà dans ce collège`,
+      });
+    }
 
-    // Créer les groupes A-G automatiquement
-    await Group.createDefaultGroups(newClass.id);
-
-    logger.info(`Class created: ${newClass.id} - ${code}`);
-    res.status(201).json(newClass);
+    const newClass = await Class.create(collegeId, { niveau, serie });
+    logger.info(`Class created: ${newClass.id} - ${newClass.code}`);
+    res.status(201).json({ ...newClass, effectif: 0 });
   } catch (error) {
     logger.error(`Error creating class: ${error.message}`);
     res.status(500).json({ error: 'Erreur lors de la création de la classe' });
@@ -53,19 +51,11 @@ export const getClassesByCollege = async (req, res) => {
 
 export const getClassById = async (req, res) => {
   try {
-    const { classId } = req.params;
-
-    const classData = await Class.findById(classId);
+    const classData = await Class.findById(req.params.classId);
     if (!classData) {
       return res.status(404).json({ error: 'Classe non trouvée' });
     }
-
-    const groups = await Group.findByClass(classId);
-
-    res.json({
-      ...classData,
-      groups,
-    });
+    res.json(classData);
   } catch (error) {
     logger.error(`Error fetching class: ${error.message}`);
     res.status(500).json({ error: 'Erreur lors de la récupération de la classe' });
@@ -75,15 +65,27 @@ export const getClassById = async (req, res) => {
 export const updateClass = async (req, res) => {
   try {
     const { classId } = req.params;
+    const { niveau, serie } = req.body;
+
+    if (!niveau || !serie) {
+      return res.status(400).json({ error: 'Niveau et série requis' });
+    }
 
     const classData = await Class.findById(classId);
     if (!classData) {
       return res.status(404).json({ error: 'Classe non trouvée' });
     }
 
-    const updatedClass = await Class.update(classId, req.body);
+    const duplicate = await Class.findDuplicate(classData.college_id, niveau, serie, classId);
+    if (duplicate) {
+      return res.status(409).json({
+        error: `La classe ${Class.buildCode(niveau, serie)} existe déjà dans ce collège`,
+      });
+    }
+
+    const updated = await Class.update(classId, { niveau, serie });
     logger.info(`Class updated: ${classId}`);
-    res.json(updatedClass);
+    res.json(updated);
   } catch (error) {
     logger.error(`Error updating class: ${error.message}`);
     res.status(500).json({ error: 'Erreur lors de la mise à jour de la classe' });
