@@ -4,6 +4,7 @@ import axios from 'axios';
 
 // Pages
 import Login from './pages/Login';
+import OtpVerification from './pages/OtpVerification';
 import Dashboard from './pages/Dashboard';
 import ClassesManagement from './pages/ClassesManagement';
 import CollegeForm from './pages/CollegeForm';
@@ -77,6 +78,12 @@ function App() {
               <Login onLoginSuccess={() => setIsAuthenticated(true)} />
             )
           }
+        />
+
+        {/* OTP Verification Route */}
+        <Route
+          path="/verify-otp"
+          element={<OtpVerification />}
         />
 
         {/* Protected Routes */}

@@ -70,28 +70,15 @@ export const classAPI = {
   delete: (classId) => api.delete(`/classes/class/${classId}`),
 };
 
-// ====== GROUPS ======
-export const groupAPI = {
-  getByClass: (classId) => api.get(`/groups/${classId}/groups`),
-  getById: (groupId) => api.get(`/groups/group/${groupId}`),
-  delete: (groupId) => api.delete(`/groups/group/${groupId}`),
-};
-
-// ====== STUDENTS ======
 export const studentAPI = {
-  getByGroup: (groupId) => api.get(`/students/group/${groupId}`),
   getByClass: (classId) => api.get(`/students/class/${classId}`),
   getByCollege: (collegeId) => api.get(`/students/college/${collegeId}`),
   getById: (studentId) => api.get(`/students/${studentId}`),
-  create: (groupId, data, photo) => {
+  create: (classId, data, photo) => {
     const formData = new FormData();
-    Object.keys(data).forEach((key) => {
-      formData.append(key, data[key]);
-    });
-    if (photo) {
-      formData.append('photo', photo);
-    }
-    return api.post(`/students/${groupId}/students`, formData, {
+    Object.keys(data).forEach((k) => formData.append(k, data[k]));
+    if (photo) formData.append('photo', photo);
+    return api.post(`/students/${classId}/students`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
@@ -106,7 +93,6 @@ export const studentAPI = {
   delete: (studentId) => api.delete(`/students/${studentId}`),
 };
 
-// ====== IMPORT ======
 export const importAPI = {
   validateExcel: (file) => {
     const formData = new FormData();
@@ -115,10 +101,8 @@ export const importAPI = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
-  importStudents: (classId, students) =>
-    api.post(`/students/${classId}/import`, { students }),
-  downloadTemplate: () =>
-    api.get('/students/import/template', { responseType: 'blob' }),
+  importStudents: (classId, students) => api.post(`/students/${classId}/import`, { students }),
+  downloadTemplate: () => api.get('/students/import/template', { responseType: 'blob' }),
 };
 
 export default api;

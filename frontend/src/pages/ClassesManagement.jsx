@@ -1,128 +1,200 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Plus, Pencil, Trash2, Users, Loader2 } from 'lucide-react';
 import { classAPI, collegeAPI } from '../services/api';
+
+const emptyForm = { niveau: '', serie: '' };
 
 export default function ClassesManagement() {
   const { collegeId } = useParams();
   const navigate = useNavigate();
+
   const [college, setCollege] = useState(null);
   const [classes, setClasses] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [newClass, setNewClass] = useState({ code: '', niveau: '', effectif_previsionnel: '' });
+  const [form, setForm] = useState(emptyForm);
+  const [editingId, setEditingId] = useState(null);
   const [showForm, setShowForm] = useState(false);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    fetchData();
-  }, [collegeId]);
+  useEffect(() => { fetchData(); }, [collegeId]);
 
   const fetchData = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const collegeResp = await collegeAPI.getById(collegeId);
-      setCollege(collegeResp.data);
-
-      const classesResp = await classAPI.getByCollege(collegeId);
-      setClasses(classesResp.data);
-    } catch (error) {
-      console.error('Erreur:', error);
+      const [c, cl] = await Promise.all([
+        collegeAPI.getById(collegeId),
+        classAPI.getByCollege(collegeId),
+      ]);
+      setCollege(c.data);
+      setClasses(cl.data || []);
+    } catch {
+      setError('Erreur de chargement');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAddClass = async (e) => {
+  const openCreate = () => { setForm(emptyForm); setEditingId(null); setShowForm(true); setError(''); };
+  const openEdit = (cls) => {
+    setForm({ niveau: cls.niveau, serie: cls.serie });
+    setEditingId(cls.id);
+    setShowForm(true);
+    setError('');
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
     try {
-      await classAPI.create(collegeId, newClass);
-      setNewClass({ code: '', niveau: '', effectif_previsionnel: '' });
+      if (editingId) await classAPI.update(editingId, form);
+      else await classAPI.create(collegeId, form);
       setShowForm(false);
+      setForm(emptyForm);
+      setEditingId(null);
       fetchData();
-      alert('✅ Classe créée avec groupes A-G automatiquement!');
-    } catch (error) {
-      alert('❌ Erreur: ' + error.response?.data?.error);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Erreur');
     }
   };
 
-  if (loading) return <div className="text-center py-12">⏳ Chargement...</div>;
+  const handleDelete = async (cls) => {
+    if (!confirm(`Supprimer la classe ${cls.code} et tous ses élèves ?`)) return;
+    try {
+      await classAPI.delete(cls.id);
+      fetchData();
+    } catch {
+      setError('Erreur lors de la suppression');
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-sky-50">
-      <div className="max-w-7xl mx-auto p-6">
-        <button onClick={() => navigate('/dashboard')} className="text-sky-600 hover:text-sky-700 font-semibold mb-4">
-          ← Retour Dashboard
+    <div className="min-h-screen bg-[#f7faf8]">
+      <div className="max-w-5xl mx-auto px-6 py-8">
+        <button
+          onClick={() => navigate('/dashboard')}
+          className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 mb-5 cursor-pointer"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Retour
         </button>
 
-        <h1 className="text-3xl font-bold text-sky-700 mb-2">{college?.nom}</h1>
-        <p className="text-gray-600 mb-6">Gestion des classes et groupes</p>
-
-        {!showForm ? (
+        <div className="flex items-start justify-between mb-6">
+          <div>
+            <h1 className="text-xl font-semibold text-slate-800">{college?.nom}</h1>
+            <p className="text-sm text-slate-500 mt-0.5">Classes du collège</p>
+          </div>
           <button
-            onClick={() => setShowForm(true)}
-            className="bg-sky-600 hover:bg-sky-700 text-white px-6 py-3 rounded-lg font-semibold mb-6"
+            onClick={openCreate}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium cursor-pointer"
           >
-            ➕ Nouvelle Classe
+            <Plus className="w-4 h-4" />
+            Nouvelle classe
           </button>
-        ) : (
-          <form onSubmit={handleAddClass} className="bg-white p-6 rounded-lg shadow-md mb-6">
-            <h3 className="text-xl font-bold mb-4">Créer une classe</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <input
-                type="text"
-                placeholder="Code (ex: 6ème)"
-                value={newClass.code}
-                onChange={(e) => setNewClass({ ...newClass, code: e.target.value })}
-                className="px-4 py-2 border-2 border-sky-300 rounded-lg focus:outline-none focus:border-sky-500"
-                required
-              />
-              <input
-                type="text"
-                placeholder="Niveau"
-                value={newClass.niveau}
-                onChange={(e) => setNewClass({ ...newClass, niveau: e.target.value })}
-                className="px-4 py-2 border-2 border-sky-300 rounded-lg focus:outline-none focus:border-sky-500"
-              />
-              <input
-                type="number"
-                placeholder="Effectif"
-                value={newClass.effectif_previsionnel}
-                onChange={(e) => setNewClass({ ...newClass, effectif_previsionnel: e.target.value })}
-                className="px-4 py-2 border-2 border-sky-300 rounded-lg focus:outline-none focus:border-sky-500"
-              />
+        </div>
+
+        {error && (
+          <div className="mb-4 px-4 py-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-sm">
+            {error}
+          </div>
+        )}
+
+        {showForm && (
+          <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded-xl p-5 mb-6">
+            <h3 className="text-sm font-semibold text-slate-800 mb-4">
+              {editingId ? 'Modifier la classe' : 'Créer une classe'}
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1.5">Classe</label>
+                <input
+                  type="text"
+                  placeholder="6ème, 3ème, Tle..."
+                  value={form.niveau}
+                  onChange={(e) => setForm({ ...form, niveau: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1.5">Série</label>
+                <input
+                  type="text"
+                  placeholder="A, B, M2, D..."
+                  value={form.serie}
+                  onChange={(e) => setForm({ ...form, serie: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  required
+                />
+              </div>
             </div>
-            <div className="mt-4 flex gap-2">
-              <button type="submit" className="bg-sky-600 hover:bg-sky-700 text-white px-6 py-2 rounded-lg font-semibold">
-                ✅ Créer
+
+            {(form.niveau || form.serie) && (
+              <p className="text-xs text-slate-500 mb-4">
+                Sera enregistrée sous : <span className="font-medium text-slate-700">
+                  {form.niveau}-{form.serie.toUpperCase()}
+                </span>
+              </p>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium cursor-pointer"
+              >
+                {editingId ? 'Enregistrer' : 'Créer'}
               </button>
               <button
                 type="button"
-                onClick={() => setShowForm(false)}
-                className="bg-gray-400 hover:bg-gray-500 text-white px-6 py-2 rounded-lg font-semibold"
+                onClick={() => { setShowForm(false); setEditingId(null); setError(''); }}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium cursor-pointer"
               >
-                ❌ Annuler
+                Annuler
               </button>
             </div>
           </form>
         )}
 
-        <h2 className="text-2xl font-bold text-gray-900 mb-4">Classes</h2>
-        <div className="grid gap-4">
-          {classes.map((cls) => (
-            <div key={cls.id} className="bg-white p-6 rounded-lg shadow-md border-l-4 border-sky-500">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h3 className="text-xl font-bold text-sky-700">{cls.code}</h3>
-                  <p className="text-gray-600">Effectif: {cls.effectif_previsionnel || 'N/A'}</p>
+        {loading ? (
+          <div className="flex items-center justify-center py-16 text-slate-400">
+            <Loader2 className="w-5 h-5 animate-spin mr-2" />
+            <span className="text-sm">Chargement</span>
+          </div>
+        ) : !classes.length ? (
+          <div className="bg-white border border-slate-200 rounded-xl p-10 text-center">
+            <p className="text-sm text-slate-500">Aucune classe enregistrée.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {classes.map((cls) => (
+              <div key={cls.id} className="bg-white border border-slate-200 rounded-xl p-5">
+                <div className="flex items-start justify-between mb-3">
+                  <span className="text-base font-semibold text-slate-800">{cls.code}</span>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => openEdit(cls)}
+                      className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md cursor-pointer"
+                      title="Modifier"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(cls)}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md cursor-pointer"
+                      title="Supprimer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
-                <button
-                  onClick={() => navigate(`/classes/${cls.id}/students`)}
-                  className="bg-sky-500 hover:bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold"
-                >
-                  👥 Gérer Élèves
-                </button>
+                <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                  <Users className="w-3.5 h-3.5" />
+                  {cls.effectif ?? 0} élèves
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

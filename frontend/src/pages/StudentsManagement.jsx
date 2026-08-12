@@ -1,689 +1,554 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import {
+  ArrowLeft, Plus, Upload, FileSpreadsheet, Image, Search,
+  Pencil, Trash2, Loader2, Download, Check, X
+} from 'lucide-react';
+import { studentAPI, importAPI } from '../services/api';
 
-const StudentsManagement = () => {
+const emptyStudent = {
+  matricule: '', nom: '', prenom: '', sexe: 'M',
+  date_naissance: '', lieu_naissance: '', nationalite: 'BENINOISE', adresse: '',
+};
+
+const TABS = [
+  { key: 'list', label: 'Liste', icon: Search },
+  { key: 'manual', label: 'Ajouter un élève', icon: Plus },
+  { key: 'import', label: 'Import Excel', icon: FileSpreadsheet },
+  { key: 'photos', label: 'Photos', icon: Image },
+];
+
+export default function StudentsManagement() {
   const { classId } = useParams();
   const navigate = useNavigate();
-  const API_URL = import.meta.env.VITE_API_URL;
-  const token = localStorage.getItem('token');
 
-  const [students, setStudents] = useState([]);
+  const [tab, setTab] = useState('list');
   const [classInfo, setClassInfo] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [students, setStudents] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [tab, setTab] = useState('list'); // 'list', 'import', 'photos'
-  
-  // Import Excel states
+  const [notice, setNotice] = useState('');
+  const [search, setSearch] = useState('');
+
+  const [form, setForm] = useState(emptyStudent);
+  const [photo, setPhoto] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+
   const [excelFile, setExcelFile] = useState(null);
-  const [validationResult, setValidationResult] = useState(null);
-  const [importingData, setImportingData] = useState([]);
+  const [validation, setValidation] = useState(null);
+  const [busy, setBusy] = useState(false);
 
-  // Photo upload states
   const [photoFiles, setPhotoFiles] = useState([]);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [progress, setProgress] = useState(0);
 
-  // Edit modal states
-  const [editingStudent, setEditingStudent] = useState(null);
-  const [editFormData, setEditFormData] = useState({});
+  useEffect(() => { fetchStudents(); }, [classId]);
 
-  // Fetch students on mount
-  useEffect(() => {
-    fetchStudents();
-  }, [classId]);
+  const flash = (msg) => { setNotice(msg); setTimeout(() => setNotice(''), 4000); };
 
   const fetchStudents = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const response = await axios.get(
-        `${API_URL}/students/class/${classId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setStudents(response.data.students || []);
-      if (response.data.classInfo) {
-        setClassInfo(response.data.classInfo);
-      }
-    } catch (err) {
-      console.error('Error fetching students:', err);
+      const res = await studentAPI.getByClass(classId);
+      setStudents(res.data?.students || []);
+      setClassInfo(res.data?.classInfo || null);
+    } catch {
       setError('Erreur lors du chargement des élèves');
     } finally {
       setLoading(false);
     }
   };
 
-  // Download Excel template
-  const handleDownloadTemplate = async () => {
+  const visibles = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return students;
+    return students.filter(s =>
+      [s.matricule, s.nom, s.prenom].some(v => (v || '').toLowerCase().includes(q))
+    );
+  }, [students, search]);
+
+  const resetForm = () => { setForm(emptyStudent); setPhoto(null); setEditingId(null); };
+
+  const startEdit = (s) => {
+    setForm({
+      matricule: s.matricule,
+      nom: s.nom || '',
+      prenom: s.prenom || '',
+      sexe: s.sexe || 'M',
+      date_naissance: s.date_naissance ? s.date_naissance.split('T')[0] : '',
+      lieu_naissance: s.lieu_naissance || '',
+      nationalite: s.nationalite || '',
+      adresse: s.adresse || '',
+    });
+    setEditingId(s.id);
+    setPhoto(null);
+    setTab('manual');
+  };
+
+  const submitStudent = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSaving(true);
     try {
-      const response = await axios.get(
-        `${API_URL}/students/import/template`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-          responseType: 'blob'
-        }
-      );
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', 'template_eleves.xlsx');
-      document.body.appendChild(link);
-      link.click();
-      link.parentElement.removeChild(link);
-      setSuccess('Template téléchargé ✅');
+      if (editingId) {
+        await studentAPI.update(editingId, form);
+        if (photo) await studentAPI.updatePhoto(editingId, photo);
+        flash('Élève mis à jour');
+      } else {
+        await studentAPI.create(classId, form, photo);
+        flash('Élève ajouté');
+      }
+      resetForm();
+      await fetchStudents();
+      setTab('list');
     } catch (err) {
-      console.error('Error downloading template:', err);
+      setError(err.response?.data?.error || "Erreur lors de l'enregistrement");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeStudent = async (s) => {
+    if (!confirm(`Supprimer ${s.nom} ${s.prenom} (${s.matricule}) ?`)) return;
+    try {
+      await studentAPI.delete(s.id);
+      await fetchStudents();
+      flash('Élève supprimé');
+    } catch {
+      setError('Erreur lors de la suppression');
+    }
+  };
+
+  const downloadTemplate = async () => {
+    try {
+      const res = await importAPI.downloadTemplate();
+      const url = URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'template_eleves.xlsx';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
       setError('Erreur lors du téléchargement du template');
     }
   };
 
-  // Handle Excel file selection
-  const handleExcelChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
-        setError('Veuillez sélectionner un fichier Excel (.xlsx ou .xls)');
-        return;
-      }
-      setExcelFile(file);
-      setError('');
-      setValidationResult(null);
-    }
-  };
-
-  // Validate Excel file
-  const handleValidateExcel = async () => {
-    if (!excelFile) {
-      setError('Veuillez sélectionner un fichier Excel');
-      return;
-    }
-
+  const validateExcel = async () => {
+    if (!excelFile) return;
+    setError('');
+    setBusy(true);
     try {
-      setLoading(true);
-      const formData = new FormData();
-      formData.append('file', excelFile);
-
-      const response = await axios.post(
-        `${API_URL}/students/import/validate`,
-        formData,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'multipart/form-data'
-          }
-        }
-      );
-
-      setValidationResult(response.data);
-      if (response.data.valid) {
-        setImportingData(response.data.data);
-        setSuccess(`✅ ${response.data.data.length} élèves validés, prêts à importer`);
-      } else {
-        setError(`❌ Validation échouée: ${response.data.message}`);
-      }
+      const res = await importAPI.validateExcel(excelFile);
+      setValidation(res.data);
+      if (!res.data.valid) setError(`${res.data.errors.length} erreur(s) détectée(s)`);
     } catch (err) {
-      console.error('Error validating excel:', err);
-      setError(err.response?.data?.message || 'Erreur lors de la validation');
+      setError(err.response?.data?.error || 'Erreur lors de la validation');
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   };
 
-  // Import students from validated data
-  const handleImportStudents = async () => {
-    if (importingData.length === 0) {
-      setError('Aucune donnée à importer');
-      return;
-    }
-
+  const runImport = async () => {
+    if (!validation?.data?.length) return;
+    setBusy(true);
     try {
-      setLoading(true);
-      const response = await axios.post(
-        `${API_URL}/students/${classId}/import`,
-        { data: importingData },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      setSuccess(`✅ ${response.data.imported} élèves importés avec succès!`);
+      const res = await importAPI.importStudents(classId, validation.data);
+      flash(`${res.data.imported} élève(s) importé(s)`);
+      if (res.data.errors?.length) setError(res.data.errors.join(' · '));
       setExcelFile(null);
-      setValidationResult(null);
-      setImportingData([]);
+      setValidation(null);
+      await fetchStudents();
       setTab('list');
-      await fetchStudents();
     } catch (err) {
-      console.error('Error importing students:', err);
-      setError(err.response?.data?.message || 'Erreur lors de l\'importation');
+      setError(err.response?.data?.error || "Erreur lors de l'import");
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   };
 
-  // Handle photo files drop
-  const handlePhotosDragOver = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
+  const uploadPhotos = async () => {
+    if (!photoFiles.length) return;
+    setBusy(true);
+    setError('');
+    let ok = 0;
+    const orphelins = [];
 
-  const handlePhotosDrop = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const files = Array.from(e.dataTransfer.files);
-    setPhotoFiles(files);
-  };
+    for (let i = 0; i < photoFiles.length; i++) {
+      const file = photoFiles[i];
+      const mat = file.name.replace(/\.[^.]+$/, '').trim().toUpperCase();
+      const student = students.find(s => (s.matricule || '').toUpperCase() === mat);
 
-  const handlePhotosChange = (e) => {
-    const files = Array.from(e.target.files);
-    setPhotoFiles(files);
-  };
-
-  // Upload photos
-  const handleUploadPhotos = async () => {
-    if (photoFiles.length === 0) {
-      setError('Veuillez sélectionner des photos');
-      return;
-    }
-
-    try {
-      setLoading(true);
-      let uploaded = 0;
-
-      for (const file of photoFiles) {
-        // Extract matricule from filename (e.g., MAT001.jpg)
-        const filename = file.name.split('.')[0];
-        const student = students.find(s => s.matricule.toUpperCase() === filename.toUpperCase());
-
-        if (student) {
-          const formData = new FormData();
-          formData.append('photo', file);
-
-          await axios.put(
-            `${API_URL}/students/${student.id}/photo`,
-            formData,
-            {
-              headers: {
-                Authorization: `Bearer ${token}`,
-                'Content-Type': 'multipart/form-data'
-              }
-            }
-          );
-          uploaded++;
+      if (!student) { orphelins.push(file.name); }
+      else {
+        try {
+          await studentAPI.updatePhoto(student.id, file);
+          ok++;
+        } catch {
+          orphelins.push(file.name);
         }
-
-        setUploadProgress(Math.round((uploaded / photoFiles.length) * 100));
       }
-
-      setSuccess(`✅ ${uploaded} photos uploadées sur ${photoFiles.length}`);
-      setPhotoFiles([]);
-      setUploadProgress(0);
-      await fetchStudents();
-    } catch (err) {
-      console.error('Error uploading photos:', err);
-      setError('Erreur lors de l\'upload des photos');
-    } finally {
-      setLoading(false);
+      setProgress(Math.round(((i + 1) / photoFiles.length) * 100));
     }
+
+    flash(`${ok} photo(s) associée(s)`);
+    if (orphelins.length) setError(`Sans correspondance : ${orphelins.join(', ')}`);
+    setPhotoFiles([]);
+    setProgress(0);
+    setBusy(false);
+    await fetchStudents();
   };
 
-  // Edit student
-  const handleEditStudent = (student) => {
-    setEditingStudent(student.id);
-    setEditFormData({
-      matricule: student.matricule,
-      nom: student.nom,
-      prenom: student.prenom,
-      sexe: student.sexe,
-      date_naissance: student.date_naissance,
-      lieu_naissance: student.lieu_naissance,
-      nationalite: student.nationalite,
-      adresse: student.adresse,
-      telephone: student.telephone
-    });
-  };
-
-  const handleSaveEdit = async () => {
-    try {
-      setLoading(true);
-      await axios.put(
-        `${API_URL}/students/${editingStudent}`,
-        editFormData,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setSuccess('✅ Élève modifié avec succès');
-      setEditingStudent(null);
-      await fetchStudents();
-    } catch (err) {
-      console.error('Error saving student:', err);
-      setError('Erreur lors de la sauvegarde');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Delete student
-  const handleDeleteStudent = async (studentId) => {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer cet élève?')) return;
-
-    try {
-      setLoading(true);
-      await axios.delete(
-        `${API_URL}/students/${studentId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setSuccess('✅ Élève supprimé');
-      await fetchStudents();
-    } catch (err) {
-      console.error('Error deleting student:', err);
-      setError('Erreur lors de la suppression');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const avecPhoto = students.filter(s => s.photo_path).length;
 
   return (
-    <div className="min-h-screen bg-sky-50 py-8 px-4">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
+    <div className="min-h-screen bg-[#f7faf8]">
+      <div className="sticky top-0 z-20 bg-white border-b border-slate-200">
+        <div className="max-w-6xl mx-auto px-6 py-4">
           <button
-            onClick={() => navigate(-1)}
-            className="text-sky-600 hover:text-sky-800 mb-4 font-semibold"
+            onClick={() => navigate('/dashboard')}
+            className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 mb-3 cursor-pointer"
           >
-            ← Retour
+            <ArrowLeft className="w-4 h-4" />
+            Retour
           </button>
-          <h1 className="text-4xl font-bold text-sky-700">
-            👥 Gestion des Élèves
-          </h1>
-          {classInfo && (
-            <p className="text-gray-600 mt-2">
-              Classe: {classInfo.code} • Collectif effectif: {students.length}
-            </p>
-          )}
-        </div>
 
-        {/* Alert Messages */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="mr-auto">
+              <h1 className="text-lg font-semibold text-slate-800">{classInfo?.code || 'Classe'}</h1>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {students.length} élève{students.length > 1 ? 's' : ''} · {avecPhoto} avec photo
+              </p>
+            </div>
+
+            <div className="flex gap-1">
+              {TABS.map(t => {
+                const Icon = t.icon;
+                const on = tab === t.key;
+                return (
+                  <button
+                    key={t.key}
+                    onClick={() => { setTab(t.key); setError(''); if (t.key !== 'manual') resetForm(); }}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition cursor-pointer ${
+                      on ? 'bg-emerald-50 text-emerald-700' : 'text-slate-500 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-6xl mx-auto px-6 py-6">
         {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg">
-            {error}
+          <div className="mb-4 flex items-start gap-2 px-4 py-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-sm">
+            <X className="w-4 h-4 mt-0.5 shrink-0" />
+            <span className="flex-1">{error}</span>
+            <button onClick={() => setError('')} className="cursor-pointer shrink-0">
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         )}
-        {success && (
-          <div className="mb-4 p-4 bg-green-50 border border-green-200 text-green-700 rounded-lg">
-            {success}
-          </div>
-        )}
-
-        {/* Tabs */}
-        <div className="flex gap-4 mb-6 border-b border-gray-300">
-          <button
-            onClick={() => setTab('list')}
-            className={`px-6 py-3 font-semibold transition ${
-              tab === 'list'
-                ? 'border-b-4 border-sky-500 text-sky-700'
-                : 'text-gray-600 hover:text-gray-800'
-            }`}
-          >
-            📋 Liste ({students.length})
-          </button>
-          <button
-            onClick={() => setTab('import')}
-            className={`px-6 py-3 font-semibold transition ${
-              tab === 'import'
-                ? 'border-b-4 border-sky-500 text-sky-700'
-                : 'text-gray-600 hover:text-gray-800'
-            }`}
-          >
-            📥 Importer Excel
-          </button>
-          <button
-            onClick={() => setTab('photos')}
-            className={`px-6 py-3 font-semibold transition ${
-              tab === 'photos'
-                ? 'border-b-4 border-sky-500 text-sky-700'
-                : 'text-gray-600 hover:text-gray-800'
-            }`}
-          >
-            📷 Upload Photos
-          </button>
-        </div>
-
-        {/* TAB 1: Liste des élèves */}
-        {tab === 'list' && (
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            {students.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-gray-600 text-lg">Aucun élève pour cette classe</p>
-                <button
-                  onClick={() => setTab('import')}
-                  className="mt-4 bg-sky-500 hover:bg-sky-600 text-white px-6 py-2 rounded-lg"
-                >
-                  Importer les premiers élèves
-                </button>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-sky-100 text-sky-800">
-                    <tr>
-                      <th className="text-left px-4 py-3">Matricule</th>
-                      <th className="text-left px-4 py-3">Nom Prénom</th>
-                      <th className="text-left px-4 py-3">Date Naiss.</th>
-                      <th className="text-left px-4 py-3">Nationalité</th>
-                      <th className="text-left px-4 py-3">Photo</th>
-                      <th className="text-center px-4 py-3">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {students.map(student => (
-                      <tr key={student.id} className="border-b hover:bg-sky-50 transition">
-                        <td className="px-4 py-3 font-semibold">{student.matricule}</td>
-                        <td className="px-4 py-3">{student.nom} {student.prenom}</td>
-                        <td className="px-4 py-3">{student.date_naissance}</td>
-                        <td className="px-4 py-3">{student.nationalite}</td>
-                        <td className="px-4 py-3">
-                          {student.photo_path ? (
-                            <span className="text-green-600">✅</span>
-                          ) : (
-                            <span className="text-gray-400">❌</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <button
-                            onClick={() => handleEditStudent(student)}
-                            className="text-blue-600 hover:text-blue-800 mr-3"
-                            title="Éditer"
-                          >
-                            ✏️
-                          </button>
-                          <button
-                            onClick={() => handleDeleteStudent(student.id)}
-                            className="text-red-600 hover:text-red-800"
-                            title="Supprimer"
-                          >
-                            🗑️
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+        {notice && (
+          <div className="mb-4 flex items-center gap-2 px-4 py-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-sm">
+            <Check className="w-4 h-4" />
+            {notice}
           </div>
         )}
 
-        {/* TAB 2: Import Excel */}
-        {tab === 'import' && (
-          <div className="space-y-6">
-            {/* Step 1: Download Template */}
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <h2 className="text-2xl font-bold text-sky-700 mb-4">📥 Étape 1: Télécharger Template</h2>
-              <p className="text-gray-600 mb-4">
-                Téléchargez le modèle Excel vierge avec les 9 colonnes requises:
-              </p>
-              <p className="text-sm text-gray-500 mb-4">
-                Photo | Matricule | Nom | Prénom(s) | Sexe | Date Naiss | Lieu Naiss | Nationalité | Adresse
-              </p>
-              <button
-                onClick={handleDownloadTemplate}
-                className="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg font-semibold"
-              >
-                ⬇️ Télécharger Template
-              </button>
-            </div>
-
-            {/* Step 2: Upload Excel */}
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <h2 className="text-2xl font-bold text-sky-700 mb-4">📥 Étape 2: Upload Fichier Complété</h2>
-              <div className="border-2 border-dashed border-sky-300 rounded-lg p-8 text-center cursor-pointer hover:border-sky-500 transition">
-                <input
-                  type="file"
-                  accept=".xlsx,.xls"
-                  onChange={handleExcelChange}
-                  className="hidden"
-                  id="excel-input"
-                />
-                <label htmlFor="excel-input" className="cursor-pointer">
-                  <div className="text-4xl mb-2">📊</div>
-                  <p className="text-gray-600">Cliquez pour sélectionner le fichier Excel</p>
-                  <p className="text-sm text-gray-500 mt-1">
-                    {excelFile ? excelFile.name : 'Ou glissez-déposez ici'}
-                  </p>
-                </label>
-              </div>
-
-              {excelFile && (
-                <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-                  ✅ Fichier sélectionné: {excelFile.name}
+        {loading ? (
+          <div className="flex items-center justify-center py-20 text-slate-400">
+            <Loader2 className="w-5 h-5 animate-spin mr-2" />
+            <span className="text-sm">Chargement</span>
+          </div>
+        ) : (
+          <>
+            {tab === 'list' && (
+              <>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="relative mr-auto">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={search}
+                      onChange={e => setSearch(e.target.value)}
+                      placeholder="Matricule, nom, prénom"
+                      className="w-64 pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <button
+                    onClick={() => { resetForm(); setTab('manual'); }}
+                    className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Ajouter un élève
+                  </button>
                 </div>
-              )}
-            </div>
 
-            {/* Step 3: Validate & Import */}
-            {excelFile && (
-              <div className="bg-white rounded-lg shadow-lg p-6">
-                <h2 className="text-2xl font-bold text-sky-700 mb-4">✅ Étape 3: Valider & Importer</h2>
-                <button
-                  onClick={handleValidateExcel}
-                  disabled={loading}
-                  className="bg-sky-500 hover:bg-sky-600 disabled:bg-gray-400 text-white px-6 py-3 rounded-lg font-semibold mb-4"
-                >
-                  {loading ? '⏳ Validation...' : '🔍 Valider le Fichier'}
-                </button>
-
-                {validationResult && validationResult.valid && (
-                  <>
-                    <div className="mb-4 p-4 bg-green-50 border border-green-200 text-green-700 rounded-lg">
-                      ✅ {validationResult.data.length} élèves prêts à importer
-                    </div>
-                    <div className="bg-gray-50 rounded-lg p-4 max-h-64 overflow-y-auto mb-4">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="bg-gray-200">
-                            <th className="text-left px-2 py-1">Matricule</th>
-                            <th className="text-left px-2 py-1">Nom</th>
-                            <th className="text-left px-2 py-1">Prénom</th>
-                            <th className="text-left px-2 py-1">Date Naiss</th>
+                {!visibles.length ? (
+                  <div className="bg-white border border-slate-200 rounded-xl p-10 text-center">
+                    <p className="text-sm text-slate-500">
+                      {search ? 'Aucun résultat.' : 'Aucun élève dans cette classe.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50 border-b border-slate-200">
+                        <tr className="text-left text-xs font-medium text-slate-500">
+                          <th className="px-4 py-3">Matricule</th>
+                          <th className="px-4 py-3">Nom</th>
+                          <th className="px-4 py-3">Prénom(s)</th>
+                          <th className="px-4 py-3">Sexe</th>
+                          <th className="px-4 py-3">Naissance</th>
+                          <th className="px-4 py-3">Photo</th>
+                          <th className="px-4 py-3 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visibles.map(s => (
+                          <tr key={s.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
+                            <td className="px-4 py-3 font-medium text-slate-800">{s.matricule}</td>
+                            <td className="px-4 py-3 text-slate-700">{s.nom}</td>
+                            <td className="px-4 py-3 text-slate-700">{s.prenom}</td>
+                            <td className="px-4 py-3 text-slate-600">{s.sexe}</td>
+                            <td className="px-4 py-3 text-slate-600">
+                              {s.date_naissance ? s.date_naissance.split('T')[0] : '—'}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`text-xs font-medium px-2 py-0.5 rounded ${
+                                s.photo_path ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                              }`}>
+                                {s.photo_path ? 'OK' : 'Manquante'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex justify-end gap-1">
+                                <button
+                                  onClick={() => startEdit(s)}
+                                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md cursor-pointer"
+                                  title="Modifier"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => removeStudent(s)}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md cursor-pointer"
+                                  title="Supprimer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
                           </tr>
-                        </thead>
-                        <tbody>
-                          {validationResult.data.slice(0, 10).map((row, idx) => (
-                            <tr key={idx} className="border-t">
-                              <td className="px-2 py-1">{row.matricule}</td>
-                              <td className="px-2 py-1">{row.nom}</td>
-                              <td className="px-2 py-1">{row.prenom}</td>
-                              <td className="px-2 py-1">{row.date_naissance}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      {validationResult.data.length > 10 && (
-                        <p className="text-center text-gray-500 mt-2">
-                          ... et {validationResult.data.length - 10} autres
-                        </p>
-                      )}
-                    </div>
-                    <button
-                      onClick={handleImportStudents}
-                      disabled={loading}
-                      className="bg-green-500 hover:bg-green-600 disabled:bg-gray-400 text-white px-6 py-3 rounded-lg font-semibold w-full"
-                    >
-                      {loading ? '⏳ Import...' : '✅ Importer les Élèves'}
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* TAB 3: Upload Photos */}
-        {tab === 'photos' && (
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <h2 className="text-2xl font-bold text-sky-700 mb-4">📷 Upload des Photos</h2>
-            <p className="text-gray-600 mb-4">
-              Renommez les photos avec le matricule (ex: MAT001.jpg) puis uploadez-les
-            </p>
-
-            {/* Drop Zone */}
-            <div
-              onDragOver={handlePhotosDragOver}
-              onDrop={handlePhotosDrop}
-              className="border-2 border-dashed border-sky-300 rounded-lg p-8 text-center cursor-pointer hover:border-sky-500 transition mb-6"
-            >
-              <input
-                type="file"
-                multiple
-                accept="image/*"
-                onChange={handlePhotosChange}
-                className="hidden"
-                id="photos-input"
-              />
-              <label htmlFor="photos-input" className="cursor-pointer">
-                <div className="text-5xl mb-2">📸</div>
-                <p className="text-gray-600 font-semibold">Glissez-déposez les photos ici</p>
-                <p className="text-sm text-gray-500 mt-1">
-                  Ou cliquez pour sélectionner les fichiers
-                </p>
-              </label>
-            </div>
-
-            {/* Selected Files */}
-            {photoFiles.length > 0 && (
-              <div className="mb-6">
-                <p className="font-semibold text-gray-700 mb-2">
-                  📁 {photoFiles.length} photo(s) sélectionnée(s):
-                </p>
-                <div className="bg-gray-50 rounded-lg p-4 max-h-64 overflow-y-auto mb-4">
-                  {Array.from(photoFiles).map((file, idx) => (
-                    <div key={idx} className="flex items-center justify-between py-2 border-b">
-                      <span className="text-sm">{file.name}</span>
-                      <span className="text-xs text-gray-500">
-                        {(file.size / 1024 / 1024).toFixed(2)} MB
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Progress Bar */}
-                {uploadProgress > 0 && uploadProgress < 100 && (
-                  <div className="mb-4">
-                    <div className="flex justify-between mb-1">
-                      <span className="text-sm font-semibold">Progression:</span>
-                      <span className="text-sm">{uploadProgress}%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div
-                        className="bg-green-500 h-2 rounded-full transition"
-                        style={{ width: `${uploadProgress}%` }}
-                      ></div>
-                    </div>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
+              </>
+            )}
 
-                {/* Upload Button */}
-                <button
-                  onClick={handleUploadPhotos}
-                  disabled={loading}
-                  className="w-full bg-sky-500 hover:bg-sky-600 disabled:bg-gray-400 text-white px-6 py-3 rounded-lg font-semibold"
-                >
-                  {loading ? '⏳ Upload...' : `📤 Upload ${photoFiles.length} Photo(s)`}
-                </button>
+            {tab === 'manual' && (
+              <form onSubmit={submitStudent} className="bg-white border border-slate-200 rounded-xl p-6 max-w-3xl">
+                <h2 className="text-sm font-semibold text-slate-800 mb-5">
+                  {editingId ? 'Modifier l\'élève' : 'Nouvel élève'}
+                </h2>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+                  <Input
+                    label="Matricule" required disabled={!!editingId}
+                    value={form.matricule}
+                    onChange={v => setForm({ ...form, matricule: v })}
+                    placeholder="MAT001"
+                  />
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1.5">Sexe</label>
+                    <select
+                      value={form.sexe}
+                      onChange={e => setForm({ ...form, sexe: e.target.value })}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                    >
+                      <option value="M">M</option>
+                      <option value="F">F</option>
+                    </select>
+                  </div>
+                  <Input label="Nom" required value={form.nom}
+                    onChange={v => setForm({ ...form, nom: v })} placeholder="HOUNDNJE" />
+                  <Input label="Prénom(s)" required value={form.prenom}
+                    onChange={v => setForm({ ...form, prenom: v })} placeholder="Oswell Séwanu" />
+                  <Input label="Date de naissance" type="date" value={form.date_naissance}
+                    onChange={v => setForm({ ...form, date_naissance: v })} />
+                  <Input label="Lieu de naissance" value={form.lieu_naissance}
+                    onChange={v => setForm({ ...form, lieu_naissance: v })} placeholder="Cotonou" />
+                  <Input label="Nationalité" value={form.nationalite}
+                    onChange={v => setForm({ ...form, nationalite: v })} placeholder="BENINOISE" />
+                  <Input label="Adresse" value={form.adresse}
+                    onChange={v => setForm({ ...form, adresse: v })} placeholder="Akpakpa, Cotonou" />
+                </div>
+
+                <div className="mb-5">
+                  <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                    Photo {editingId ? '(laisser vide pour conserver)' : '(optionnel)'}
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg"
+                    onChange={e => setPhoto(e.target.files[0] || null)}
+                    className="block w-full text-sm text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 file:cursor-pointer"
+                  />
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg text-sm font-medium cursor-pointer"
+                  >
+                    {saving ? 'Enregistrement' : editingId ? 'Enregistrer' : 'Ajouter'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { resetForm(); setTab('list'); }}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium cursor-pointer"
+                  >
+                    Annuler
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {tab === 'import' && (
+              <div className="max-w-3xl space-y-4">
+                <Card>
+                  <p className="text-sm text-slate-700 mb-1 font-medium">1. Télécharger le modèle</p>
+                  <p className="text-xs text-slate-500 mb-4">
+                    Huit colonnes : matricule, nom, prénom, sexe, date de naissance, lieu, nationalité, adresse.
+                  </p>
+                  <button
+                    onClick={downloadTemplate}
+                    className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 rounded-lg text-sm font-medium cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" />
+                    Template Excel
+                  </button>
+                </Card>
+
+                <Card>
+                  <p className="text-sm text-slate-700 mb-4 font-medium">2. Charger le fichier rempli</p>
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls"
+                    onChange={e => { setExcelFile(e.target.files[0] || null); setValidation(null); }}
+                    className="block w-full text-sm text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 file:cursor-pointer"
+                  />
+                  {excelFile && (
+                    <button
+                      onClick={validateExcel}
+                      disabled={busy}
+                      className="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg text-sm font-medium cursor-pointer"
+                    >
+                      {busy ? 'Vérification' : 'Vérifier le fichier'}
+                    </button>
+                  )}
+                </Card>
+
+                {validation && (
+                  <Card>
+                    <p className="text-sm text-slate-700 mb-3 font-medium">3. Importer</p>
+                    <p className="text-sm text-slate-600 mb-3">
+                      {validation.totalRows} ligne(s) valide(s)
+                      {validation.errors?.length ? `, ${validation.errors.length} erreur(s)` : ''}
+                    </p>
+                    {validation.errors?.length > 0 && (
+                      <ul className="mb-4 max-h-40 overflow-y-auto text-xs text-rose-600 space-y-1">
+                        {validation.errors.map((e, i) => <li key={i}>{e}</li>)}
+                      </ul>
+                    )}
+                    <button
+                      onClick={runImport}
+                      disabled={busy || !validation.data?.length}
+                      className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg text-sm font-medium cursor-pointer"
+                    >
+                      <Upload className="w-4 h-4" />
+                      {busy ? 'Import en cours' : `Importer ${validation.data?.length || 0} élève(s)`}
+                    </button>
+                  </Card>
+                )}
               </div>
             )}
-          </div>
-        )}
 
-        {/* Edit Modal */}
-        {editingStudent && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg shadow-lg p-6 max-w-2xl w-full max-h-96 overflow-y-auto">
-              <h2 className="text-2xl font-bold text-sky-700 mb-4">✏️ Éditer Élève</h2>
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                <input
-                  type="text"
-                  value={editFormData.matricule}
-                  disabled
-                  className="col-span-2 px-3 py-2 border rounded bg-gray-100"
-                  placeholder="Matricule"
-                />
-                <input
-                  type="text"
-                  value={editFormData.nom}
-                  onChange={(e) => setEditFormData({ ...editFormData, nom: e.target.value })}
-                  className="px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  placeholder="Nom"
-                />
-                <input
-                  type="text"
-                  value={editFormData.prenom}
-                  onChange={(e) => setEditFormData({ ...editFormData, prenom: e.target.value })}
-                  className="px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  placeholder="Prénom"
-                />
-                <select
-                  value={editFormData.sexe || ''}
-                  onChange={(e) => setEditFormData({ ...editFormData, sexe: e.target.value })}
-                  className="px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-sky-500"
-                >
-                  <option value="">Sexe</option>
-                  <option value="M">Masculin</option>
-                  <option value="F">Féminin</option>
-                </select>
-                <input
-                  type="date"
-                  value={editFormData.date_naissance || ''}
-                  onChange={(e) => setEditFormData({ ...editFormData, date_naissance: e.target.value })}
-                  className="px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-sky-500"
-                />
-                <input
-                  type="text"
-                  value={editFormData.lieu_naissance || ''}
-                  onChange={(e) => setEditFormData({ ...editFormData, lieu_naissance: e.target.value })}
-                  className="col-span-2 px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  placeholder="Lieu de naissance"
-                />
-                <input
-                  type="text"
-                  value={editFormData.nationalite || ''}
-                  onChange={(e) => setEditFormData({ ...editFormData, nationalite: e.target.value })}
-                  className="px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  placeholder="Nationalité"
-                />
-                <input
-                  type="tel"
-                  value={editFormData.telephone || ''}
-                  onChange={(e) => setEditFormData({ ...editFormData, telephone: e.target.value })}
-                  className="px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  placeholder="Téléphone"
-                />
-                <input
-                  type="text"
-                  value={editFormData.adresse || ''}
-                  onChange={(e) => setEditFormData({ ...editFormData, adresse: e.target.value })}
-                  className="col-span-2 px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  placeholder="Adresse"
-                />
+            {tab === 'photos' && (
+              <div className="max-w-3xl space-y-4">
+                <Card>
+                  <p className="text-sm text-slate-700 mb-1 font-medium">Nommer les fichiers</p>
+                  <p className="text-xs text-slate-500 mb-4">
+                    Chaque photo doit porter le matricule de l'élève comme nom de fichier : MAT001.jpg, MAT002.jpg.
+                    L'association est automatique. Sélectionnez le dossier entier d'un coup.
+                  </p>
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/png,image/jpeg"
+                    onChange={e => setPhotoFiles(Array.from(e.target.files))}
+                    className="block w-full text-sm text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 file:cursor-pointer"
+                  />
+                </Card>
+
+                {photoFiles.length > 0 && (
+                  <Card>
+                    <p className="text-sm text-slate-700 mb-3 font-medium">
+                      {photoFiles.length} fichier(s) sélectionné(s)
+                    </p>
+
+                    {progress > 0 && (
+                      <div className="mb-4">
+                        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-emerald-500 transition-all" style={{ width: `${progress}%` }} />
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1">{progress}%</p>
+                      </div>
+                    )}
+
+                    <button
+                      onClick={uploadPhotos}
+                      disabled={busy}
+                      className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg text-sm font-medium cursor-pointer"
+                    >
+                      <Upload className="w-4 h-4" />
+                      {busy ? 'Envoi en cours' : 'Associer les photos'}
+                    </button>
+                  </Card>
+                )}
               </div>
-              <div className="flex gap-4">
-                <button
-                  onClick={handleSaveEdit}
-                  disabled={loading}
-                  className="flex-1 bg-green-500 hover:bg-green-600 disabled:bg-gray-400 text-white px-4 py-2 rounded font-semibold"
-                >
-                  💾 Sauver
-                </button>
-                <button
-                  onClick={() => setEditingStudent(null)}
-                  className="flex-1 bg-gray-400 hover:bg-gray-500 text-white px-4 py-2 rounded font-semibold"
-                >
-                  ❌ Annuler
-                </button>
-              </div>
-            </div>
-          </div>
+            )}
+          </>
         )}
       </div>
     </div>
   );
-};
+}
 
-export default StudentsManagement;
+function Input({ label, value, onChange, type = 'text', placeholder, required, disabled }) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-slate-600 mb-1.5">{label}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        required={required}
+        disabled={disabled}
+        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:text-slate-400"
+      />
+    </div>
+  );
+}
+
+function Card({ children }) {
+  return <div className="bg-white border border-slate-200 rounded-xl p-5">{children}</div>;
+}

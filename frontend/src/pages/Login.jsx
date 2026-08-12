@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authAPI } from '../services/api';
 
-export default function Login() {
+export default function Login({ onLoginSuccess }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -16,12 +16,24 @@ export default function Login() {
 
     try {
       const response = await authAPI.login(email, password);
-      const { token, user } = response.data;
 
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(user));
+      // Si requiresOTP est true, rediriger vers la page de vérification OTP
+      if (response.data.requiresOTP) {
+        navigate('/verify-otp', {
+          state: { email: response.data.email },
+        });
+      } else {
+        // Sinon, procéder comme avant (pour compatibilité avec les anciennes versions)
+        const { token, user } = response.data;
+        localStorage.setItem('token', token);
+        localStorage.setItem('user', JSON.stringify(user));
 
-      navigate('/dashboard');
+        if (onLoginSuccess) {
+          onLoginSuccess();
+        }
+
+        navigate('/dashboard');
+      }
     } catch (err) {
       setError(err.response?.data?.error || 'Erreur de connexion');
     } finally {
@@ -78,7 +90,7 @@ export default function Login() {
         </form>
 
         <p className="text-center text-gray-600 text-sm mt-6">
-          Plateforme interne FVS • Contact: +229 97 268 741
+          Plateforme interne FVS • Contact: +229 01 47 61 14 99
         </p>
       </div>
     </div>

@@ -1,16 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 
 const CollegeForm = () => {
   const { collegeId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const API_URL = import.meta.env.VITE_API_URL;
+
+  const deptFromUrl = searchParams.get('dept') || '';
+  const communeFromUrl = searchParams.get('commune') || '';
 
   const [formData, setFormData] = useState({
     nom: '',
-    departement: '',
-    commune: '',
+    departement: deptFromUrl,
+    commune: communeFromUrl,
     directeur_nom: '',
     directeur_contact: '',
     email: '',
@@ -18,8 +22,6 @@ const CollegeForm = () => {
   });
 
   const [signature, setSignature] = useState(null);
-  const [departments, setDepartments] = useState([]);
-  const [communes, setCommunes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -27,39 +29,6 @@ const CollegeForm = () => {
   const [signaturePreview, setSignaturePreview] = useState(null);
 
   const token = localStorage.getItem('token');
-
-  // Fetch departments
-  useEffect(() => {
-    const fetchDepartments = async () => {
-      try {
-        const response = await axios.get(`${API_URL}/locations/departements`);
-        setDepartments(response.data.departements || []);
-      } catch (err) {
-        console.error('Error fetching departments:', err);
-        setError('Erreur lors du chargement des départements');
-      }
-    };
-    fetchDepartments();
-  }, [API_URL]);
-
-  // Fetch communes when department changes
-  useEffect(() => {
-    if (formData.departement) {
-      const fetchCommunes = async () => {
-        try {
-          const response = await axios.get(
-            `${API_URL}/locations/communes/${formData.departement}`
-          );
-          setCommunes(response.data.communes || []);
-          setFormData(prev => ({ ...prev, commune: '' }));
-        } catch (err) {
-          console.error('Error fetching communes:', err);
-          setError('Erreur lors du chargement des communes');
-        }
-      };
-      fetchCommunes();
-    }
-  }, [formData.departement, API_URL]);
 
   // Fetch college data if editing
   useEffect(() => {
@@ -106,18 +75,16 @@ const CollegeForm = () => {
   const handleSignatureChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      // Validation
       if (!['image/png', 'image/jpeg'].includes(file.type)) {
         setError('La signature doit être en PNG ou JPEG');
         return;
       }
-      if (file.size > 2 * 1024 * 1024) { // 2MB
+      if (file.size > 2 * 1024 * 1024) {
         setError('La signature ne doit pas dépasser 2MB');
         return;
       }
       setSignature(file);
       
-      // Preview
       const reader = new FileReader();
       reader.onloadend = () => {
         setSignaturePreview(reader.result);
@@ -132,7 +99,6 @@ const CollegeForm = () => {
     setError('');
     setSuccess('');
 
-    // Validation
     if (!formData.nom.trim()) {
       setError('Le nom du collège est requis');
       return;
@@ -154,14 +120,12 @@ const CollegeForm = () => {
       setLoading(true);
 
       if (isEditing) {
-        // Update college
         await axios.put(
           `${API_URL}/colleges/${collegeId}`,
           formData,
           { headers: { Authorization: `Bearer ${token}` } }
         );
       } else {
-        // Create college
         await axios.post(
           `${API_URL}/colleges`,
           formData,
@@ -169,7 +133,6 @@ const CollegeForm = () => {
         );
       }
 
-      // Upload signature if provided
       if (signature) {
         const collegeId2 = collegeId || (await axios.get(`${API_URL}/colleges`, {
           headers: { Authorization: `Bearer ${token}` }
@@ -185,7 +148,7 @@ const CollegeForm = () => {
         );
       }
 
-      setSuccess(isEditing ? 'Collège mis à jour ✅' : 'Collège créé ✅');
+      setSuccess(isEditing ? 'Collège mis à jour' : 'Collège créé');
       setTimeout(() => {
         navigate('/dashboard');
       }, 1500);
@@ -198,37 +161,47 @@ const CollegeForm = () => {
   };
 
   return (
-    <div className="min-h-screen bg-sky-50 py-12 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-sky-50 to-blue-50 py-12 px-4">
       <div className="max-w-2xl mx-auto">
-        {/* Header */}
         <div className="mb-8">
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="text-sky-600 hover:text-sky-800 mb-4 font-semibold"
+          >
+            Retour au dashboard
+          </button>
           <h1 className="text-4xl font-bold text-sky-700 mb-2">
-            {isEditing ? '✏️ Éditer Collège' : '📚 Créer Collège'}
+            {isEditing ? 'Éditer Collège' : 'Créer un Collège'}
           </h1>
           <p className="text-gray-600">
-            {isEditing ? 'Modifiez les informations du collège' : 'Ajoutez un nouveau collège à la plateforme'}
+            {isEditing ? 'Modifiez les informations du collège' : 'Ajoutez un nouveau collège'}
           </p>
         </div>
 
-        {/* Alert Messages */}
         {error && (
           <div className="mb-4 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg">
-            ❌ {error}
+            {error}
           </div>
         )}
         {success && (
           <div className="mb-4 p-4 bg-green-50 border border-green-200 text-green-700 rounded-lg">
-            ✅ {success}
+            {success}
           </div>
         )}
 
-        {/* Form Card */}
         <div className="bg-white rounded-lg shadow-lg p-8">
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Location Info (Read-only) */}
+            <div className="bg-sky-50 border border-sky-200 rounded-lg p-4">
+              <p className="text-sm text-gray-600">
+                <strong>Localisation sélectionnée:</strong> {formData.commune}, {formData.departement}
+              </p>
+            </div>
+
             {/* Nom Collège */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
-                📖 Nom du Collège *
+                Nom du Collège (requis)
               </label>
               <input
                 type="text"
@@ -240,47 +213,10 @@ const CollegeForm = () => {
               />
             </div>
 
-            {/* Département */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                🗺️ Département *
-              </label>
-              <select
-                name="departement"
-                value={formData.departement}
-                onChange={handleInputChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-              >
-                <option value="">-- Sélectionner un département --</option>
-                {departments.map(dept => (
-                  <option key={dept} value={dept}>{dept}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Commune */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                🏘️ Commune *
-              </label>
-              <select
-                name="commune"
-                value={formData.commune}
-                onChange={handleInputChange}
-                disabled={!formData.departement}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200 disabled:bg-gray-100"
-              >
-                <option value="">-- Sélectionner une commune --</option>
-                {communes.map(commune => (
-                  <option key={commune} value={commune}>{commune}</option>
-                ))}
-              </select>
-            </div>
-
             {/* Directeur Nom */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
-                👔 Nom du Directeur *
+                Nom du Directeur (requis)
               </label>
               <input
                 type="text"
@@ -295,7 +231,7 @@ const CollegeForm = () => {
             {/* Directeur Contact */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
-                📧 Email du Directeur
+                Email du Directeur
               </label>
               <input
                 type="email"
@@ -310,7 +246,7 @@ const CollegeForm = () => {
             {/* Email Collège */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
-                📨 Email du Collège
+                Email du Collège
               </label>
               <input
                 type="email"
@@ -325,7 +261,7 @@ const CollegeForm = () => {
             {/* Téléphone */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
-                📞 Téléphone
+                Téléphone
               </label>
               <input
                 type="tel"
@@ -340,7 +276,7 @@ const CollegeForm = () => {
             {/* Signature Upload */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
-                ✍️ Signature du Directeur (PNG/JPEG, 200×80px)
+                Signature du Directeur (PNG/JPEG, 200×80px)
               </label>
               <div className="border-2 border-dashed border-sky-300 rounded-lg p-6 text-center cursor-pointer hover:border-sky-500 transition">
                 <input
@@ -351,17 +287,12 @@ const CollegeForm = () => {
                   id="signature-input"
                 />
                 <label htmlFor="signature-input" className="cursor-pointer">
-                  <div className="text-4xl mb-2">🖊️</div>
-                  <p className="text-gray-600">
-                    Cliquez pour uploader la signature
-                  </p>
-                  <p className="text-sm text-gray-500 mt-1">
-                    PNG ou JPEG, max 2MB
-                  </p>
+                  <div className="text-2xl mb-2">Signature</div>
+                  <p className="text-gray-600">Cliquez pour uploader la signature</p>
+                  <p className="text-sm text-gray-500 mt-1">PNG ou JPEG, max 2MB</p>
                 </label>
               </div>
 
-              {/* Signature Preview */}
               {signaturePreview && (
                 <div className="mt-4">
                   <p className="text-sm font-semibold text-gray-700 mb-2">Aperçu:</p>
@@ -384,14 +315,14 @@ const CollegeForm = () => {
                 disabled={loading}
                 className="flex-1 bg-sky-500 hover:bg-sky-600 disabled:bg-gray-400 text-white font-semibold py-3 rounded-lg transition"
               >
-                {loading ? '⏳ Sauvegarde...' : (isEditing ? '💾 Mettre à jour' : '✅ Créer Collège')}
+                {loading ? 'Sauvegarde...' : (isEditing ? 'Mettre à jour' : 'Créer Collège')}
               </button>
               <button
                 type="button"
                 onClick={() => navigate('/dashboard')}
                 className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-3 rounded-lg transition"
               >
-                ❌ Annuler
+                Annuler
               </button>
             </div>
           </form>

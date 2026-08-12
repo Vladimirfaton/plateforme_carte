@@ -16,17 +16,12 @@ const BrouillonExport = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   
-  // Edit states
   const [editingStudent, setEditingStudent] = useState(null);
   const [editData, setEditData] = useState({});
-  const [photoChangeStudent, setPhotoChangeStudent] = useState(null);
-
-  // PDF generation
   const [generatingPDF, setGeneratingPDF] = useState(false);
 
   const CARDS_PER_PAGE = 6;
 
-  // Fetch data on mount
   useEffect(() => {
     fetchBrouillonData();
   }, [classId]);
@@ -42,7 +37,6 @@ const BrouillonExport = () => {
       setStudents(response.data.students || []);
       setClassInfo(response.data.classData);
       if (response.data.classData?.college_id) {
-        // Fetch college info for verso
         const collegeRes = await axios.get(
           `${API_URL}/colleges`,
           { headers: { Authorization: `Bearer ${token}` } }
@@ -58,7 +52,6 @@ const BrouillonExport = () => {
     }
   };
 
-  // Handle edit
   const handleEditStudent = (student) => {
     setEditingStudent(student.id);
     setEditData({
@@ -82,7 +75,7 @@ const BrouillonExport = () => {
         editData,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setSuccess('✅ Élève modifié');
+      setSuccess('Élève modifié');
       setEditingStudent(null);
       await fetchBrouillonData();
     } catch (err) {
@@ -112,8 +105,7 @@ const BrouillonExport = () => {
         }
       );
 
-      setSuccess('✅ Photo mise à jour');
-      setPhotoChangeStudent(null);
+      setSuccess('Photo mise à jour');
       await fetchBrouillonData();
     } catch (err) {
       console.error('Error updating photo:', err);
@@ -127,7 +119,7 @@ const BrouillonExport = () => {
     try {
       setGeneratingPDF(true);
       await generateBrouillonPDF(students, classInfo, collegeInfo);
-      setSuccess('✅ PDF généré et téléchargé!');
+      setSuccess('PDF généré et téléchargé!');
     } catch (err) {
       console.error('Error generating PDF:', err);
       setError('Erreur lors de la génération du PDF');
@@ -136,32 +128,29 @@ const BrouillonExport = () => {
     }
   };
 
-  // Paginate students
   const pages = [];
   for (let i = 0; i < students.length; i += CARDS_PER_PAGE) {
     pages.push(students.slice(i, i + CARDS_PER_PAGE));
   }
 
   return (
-    <div className="min-h-screen bg-sky-50 py-8 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-sky-50 to-blue-50 py-8 px-4">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
         <div className="mb-8">
           <button
             onClick={() => navigate(-1)}
             className="text-sky-600 hover:text-sky-800 mb-4 font-semibold"
           >
-            ← Retour
+            Retour
           </button>
           <h1 className="text-4xl font-bold text-sky-700 mb-2">
-            📄 Brouillon - Vérification Cartes
+            Brouillon - Vérification Cartes
           </h1>
           <p className="text-gray-600">
-            {classInfo?.code} • {students.length} élèves • {pages.length} page(s)
+            {classInfo?.code} | {students.length} élèves | {pages.length} page(s)
           </p>
         </div>
 
-        {/* Alert Messages */}
         {error && (
           <div className="mb-4 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg">
             {error}
@@ -173,30 +162,28 @@ const BrouillonExport = () => {
           </div>
         )}
 
-        {/* Action Buttons */}
         <div className="bg-white rounded-lg shadow-lg p-4 mb-8 flex flex-wrap gap-3">
           <button
             onClick={handleExportPDF}
             disabled={generatingPDF || students.length === 0}
             className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white px-6 py-2 rounded-lg font-semibold"
           >
-            {generatingPDF ? '⏳ Génération...' : '📥 Exporter PDF A4 Paysage'}
+            {generatingPDF ? 'Génération...' : 'Exporter PDF A4 Paysage'}
           </button>
           <button
             onClick={() => navigate(`/classes/${classId}/students`)}
             className="bg-gray-500 hover:bg-gray-600 text-white px-6 py-2 rounded-lg font-semibold"
           >
-            👥 Gérer Élèves
+            Gérer Élèves
           </button>
           <button
             onClick={fetchBrouillonData}
             className="bg-gray-500 hover:bg-gray-600 text-white px-6 py-2 rounded-lg font-semibold"
           >
-            🔄 Rafraîchir
+            Rafraîchir
           </button>
         </div>
 
-        {/* Pages */}
         {pages.length === 0 ? (
           <div className="bg-white rounded-lg shadow-lg p-12 text-center">
             <p className="text-gray-600 text-lg">Aucun élève à afficher</p>
@@ -204,12 +191,10 @@ const BrouillonExport = () => {
         ) : (
           pages.map((pageStudents, pageIdx) => (
             <div key={pageIdx} className="mb-8">
-              {/* Page Header */}
               <div className="text-center text-gray-600 text-sm font-semibold mb-4">
-                📄 Page {pageIdx + 1}/{pages.length} - Format A4 Paysage (6 cartes)
+                Page {pageIdx + 1}/{pages.length} - Format A4 Paysage (6 cartes)
               </div>
 
-              {/* 6-Card Grid */}
               <div className="bg-white rounded-lg shadow-lg p-6">
                 <div className="grid grid-cols-2 gap-6">
                   {pageStudents.map((student, idx) => (
@@ -217,14 +202,11 @@ const BrouillonExport = () => {
                       key={student.id}
                       className="border-2 border-sky-300 rounded-lg p-4 bg-sky-50 hover:shadow-lg transition"
                     >
-                      {/* Card Number */}
                       <div className="text-xs font-semibold text-gray-500 mb-2">
                         Carte {pageIdx * CARDS_PER_PAGE + idx + 1}
                       </div>
 
-                      {/* Recto Layout */}
                       <div className="flex gap-4 bg-white p-3 rounded border border-gray-200 mb-3">
-                        {/* Photo Section */}
                         <div className="w-20 h-28 bg-gray-200 rounded flex-shrink-0 flex items-center justify-center relative group">
                           {student.photo_path ? (
                             <>
@@ -240,7 +222,7 @@ const BrouillonExport = () => {
                                   onChange={(e) => handlePhotoChange(student.id, e.target.files[0])}
                                   className="hidden"
                                 />
-                                <span className="text-white text-xs font-semibold">📷 Changer</span>
+                                <span className="text-white text-xs font-semibold">Changer</span>
                               </label>
                             </>
                           ) : (
@@ -251,13 +233,12 @@ const BrouillonExport = () => {
                                 onChange={(e) => handlePhotoChange(student.id, e.target.files[0])}
                                 className="hidden"
                               />
-                              <div className="text-2xl">📸</div>
+                              <div className="text-2xl">Photo</div>
                               <div className="text-xs text-gray-600">Ajouter</div>
                             </label>
                           )}
                         </div>
 
-                        {/* Info Section */}
                         <div className="flex-1 text-sm">
                           <div className="mb-2">
                             <span className="font-semibold">MAT:</span> {student.matricule}
@@ -280,24 +261,22 @@ const BrouillonExport = () => {
                         </div>
                       </div>
 
-                      {/* Edit Button */}
                       <button
                         onClick={() => handleEditStudent(student)}
                         className="w-full bg-sky-500 hover:bg-sky-600 text-white text-sm px-3 py-1 rounded font-semibold"
                       >
-                        ✏️ Éditer Infos
+                        Éditer Infos
                       </button>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Page Break */}
               {pageIdx < pages.length - 1 && (
                 <div className="my-8 text-center">
                   <div className="border-t-2 border-gray-400 pt-4">
                     <span className="bg-sky-50 px-4 py-2 text-gray-600 font-semibold">
-                      ▼ Nouvelle Page ▼
+                      Nouvelle Page
                     </span>
                   </div>
                 </div>
@@ -307,11 +286,10 @@ const BrouillonExport = () => {
         )}
       </div>
 
-      {/* Edit Modal */}
       {editingStudent && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg shadow-lg p-6 max-w-2xl w-full max-h-96 overflow-y-auto">
-            <h2 className="text-2xl font-bold text-sky-700 mb-4">✏️ Éditer Élève</h2>
+            <h2 className="text-2xl font-bold text-sky-700 mb-4">Éditer Élève</h2>
             <div className="grid grid-cols-2 gap-3 mb-4 text-sm">
               <input
                 type="text"
@@ -383,13 +361,13 @@ const BrouillonExport = () => {
                 disabled={loading}
                 className="flex-1 bg-green-500 hover:bg-green-600 disabled:bg-gray-400 text-white px-4 py-2 rounded font-semibold text-sm"
               >
-                💾 Sauver
+                Sauver
               </button>
               <button
                 onClick={() => setEditingStudent(null)}
                 className="flex-1 bg-gray-400 hover:bg-gray-500 text-white px-4 py-2 rounded font-semibold text-sm"
               >
-                ❌ Annuler
+                Annuler
               </button>
             </div>
           </div>
