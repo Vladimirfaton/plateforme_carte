@@ -83,7 +83,7 @@ function App() {
         {/* OTP Verification Route */}
         <Route
           path="/verify-otp"
-          element={<OtpVerification />}
+          element={<OtpVerification onLoginSuccess={() => setIsAuthenticated(true)} />}
         />
 
         {/* Protected Routes */}

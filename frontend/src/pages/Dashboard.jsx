@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Building2, FileText, CreditCard, LogOut,Trash2,Search,
+  Building2, FileText, CreditCard, LogOut, Trash2, Search,
   Users, School, IdCard, ChevronRight, Plus, Pencil, ArrowLeft, Loader2
 } from 'lucide-react';
 import api, { collegeAPI, classAPI, studentAPI } from '../services/api';
@@ -11,10 +11,8 @@ const TABS = [
   { key: 'brouillon', label: 'Brouillon', icon: FileText },
   { key: 'cartes', label: 'Cartes finales', icon: CreditCard },
 ];
-const NIVEAU_ORDRE = [
-  '6ème', '5ème', '4ème', '3ème',
-  '2nde', '1ère', 'Tle', 'Terminale',
-];
+
+const NIVEAU_ORDRE = ['6ème', '5ème', '4ème', '3ème', '2nde', '1ère', 'Tle', 'Terminale'];
 
 const rangNiveau = (niveau = '') => {
   const n = niveau.trim().toLowerCase();
@@ -32,6 +30,7 @@ const trierClasses = (list) =>
     }
     return (a.serie || '').localeCompare(b.serie || '', 'fr', { numeric: true });
   });
+
 export default function Dashboard({ onLogout }) {
   const navigate = useNavigate();
 
@@ -127,7 +126,6 @@ export default function Dashboard({ onLogout }) {
 
   return (
     <div className="min-h-screen bg-[#f7faf8]">
-      {/* Header */}
       <header className="sticky top-0 z-30 bg-white border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-6 py-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -149,7 +147,7 @@ export default function Dashboard({ onLogout }) {
         </div>
       </header>
 
-<div className="sticky top-[73px] z-20 bg-[#f7faf8] border-b border-slate-200">
+      <div className="sticky top-[73px] z-20 bg-[#f7faf8] border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-6 pt-6">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
             <StatCard icon={School} label="Collèges" value={stats.colleges} color="emerald" />
@@ -166,9 +164,7 @@ export default function Dashboard({ onLogout }) {
                   key={t.key}
                   onClick={() => setActiveTab(t.key)}
                   className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition cursor-pointer ${
-                    on
-                      ? 'border-emerald-600 text-emerald-700'
-                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                    on ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-800'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -181,8 +177,6 @@ export default function Dashboard({ onLogout }) {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-8">
-
-        {/* Filtre localisation */}
         {activeTab === 'colleges' && !activeCollege && (
           <div className="bg-white border border-slate-200 rounded-xl p-5 mb-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
@@ -215,7 +209,6 @@ export default function Dashboard({ onLogout }) {
           </div>
         )}
 
-        {/* Fil d'ariane */}
         {activeTab === 'colleges' && activeCollege && (
           <div className="flex items-center gap-2 mb-5 text-sm">
             <button onClick={goBack} className="flex items-center gap-1.5 text-slate-500 hover:text-slate-800 cursor-pointer">
@@ -233,7 +226,6 @@ export default function Dashboard({ onLogout }) {
           </div>
         )}
 
-        {/* Contenu */}
         {loading ? (
           <div className="flex items-center justify-center py-20 text-slate-400">
             <Loader2 className="w-5 h-5 animate-spin mr-2" />
@@ -241,7 +233,6 @@ export default function Dashboard({ onLogout }) {
           </div>
         ) : (
           <>
-
             {activeTab === 'colleges' && !activeCollege && (
               <CollegeGrid
                 colleges={colleges}
@@ -262,27 +253,15 @@ export default function Dashboard({ onLogout }) {
             )}
 
             {activeTab === 'colleges' && activeClass && (
-              <StudentTable
-                students={students}
-                cls={activeClass}
-                navigate={navigate}
-              />
+              <StudentTable students={students} cls={activeClass} navigate={navigate} />
             )}
 
             {activeTab === 'brouillon' && (
-              <Panel>
-                <p className="text-sm text-slate-500">
-                  Ouvrez une classe depuis l'onglet Collèges pour générer son brouillon.
-                </p>
-              </Panel>
+              <Panel><p className="text-sm text-slate-500">Ouvrez une classe depuis l'onglet Collèges pour générer son brouillon.</p></Panel>
             )}
 
             {activeTab === 'cartes' && (
-              <Panel>
-                <p className="text-sm text-slate-500">
-                  Ouvrez une classe depuis l'onglet Collèges pour générer ses cartes.
-                </p>
-              </Panel>
+              <Panel><p className="text-sm text-slate-500">Ouvrez une classe depuis l'onglet Collèges pour générer ses cartes.</p></Panel>
             )}
           </>
         )}
@@ -291,12 +270,10 @@ export default function Dashboard({ onLogout }) {
   );
 }
 
-/* ---------- sous-composants ---------- */
-
 const COLORS = {
-  emerald: { bg: 'bg-emerald-50', text: 'text-emerald-600', bar: 'bg-emerald-500' },
-  cyan: { bg: 'bg-cyan-50', text: 'text-cyan-600', bar: 'bg-cyan-500' },
-  violet: { bg: 'bg-violet-50', text: 'text-violet-600', bar: 'bg-violet-500' },
+  emerald: { bg: 'bg-emerald-50', text: 'text-emerald-600' },
+  cyan: { bg: 'bg-cyan-50', text: 'text-cyan-600' },
+  violet: { bg: 'bg-violet-50', text: 'text-violet-600' },
 };
 
 function StatCard({ icon: Icon, label, value, color }) {
@@ -324,11 +301,7 @@ function Field({ label, children }) {
 }
 
 function Panel({ children }) {
-  return (
-    <div className="bg-white border border-slate-200 rounded-xl p-8 text-center">
-      {children}
-    </div>
-  );
+  return <div className="bg-white border border-slate-200 rounded-xl p-8 text-center">{children}</div>;
 }
 
 function CollegeGrid({ colleges, onOpen, onEdit, onCreate }) {
@@ -388,7 +361,7 @@ function CollegeGrid({ colleges, onOpen, onEdit, onCreate }) {
   );
 }
 
-function ClassGrid({ classes, onOpen, collegeId, onRefresh, collegeNom }) {
+function ClassGrid({ classes, onOpen, collegeId, collegeNom, onRefresh }) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ niveau: '', serie: '' });
   const [editingId, setEditingId] = useState(null);
@@ -444,9 +417,7 @@ function ClassGrid({ classes, onOpen, collegeId, onRefresh, collegeNom }) {
   };
 
   const q = search.trim().toLowerCase();
-  const visibles = q
-    ? classes.filter(c => (c.code || '').toLowerCase().includes(q))
-    : classes;
+  const visibles = q ? classes.filter(c => (c.code || '').toLowerCase().includes(q)) : classes;
 
   return (
     <div>
@@ -593,6 +564,7 @@ function ClassGrid({ classes, onOpen, collegeId, onRefresh, collegeNom }) {
     </div>
   );
 }
+
 function StudentTable({ students, cls, navigate }) {
   return (
     <div>

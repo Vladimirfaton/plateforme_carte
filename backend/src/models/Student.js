@@ -1,5 +1,6 @@
 import { query } from '../config/database.js';
 import { v4 as uuidv4 } from 'uuid';
+
 const CHAMPS = `
   id, classe_id, matricule, nom, prenom, sexe,
   TO_CHAR(date_naissance, 'YYYY-MM-DD') AS date_naissance,
@@ -21,7 +22,10 @@ export class Student {
         id, classe_id, matricule, nom, prenom, sexe, date_naissance,
         lieu_naissance, nationalite, adresse, telephone, photo_path, created_at
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
-       RETURNING *`,
+       RETURNING id, classe_id, matricule, nom, prenom, sexe,
+                 TO_CHAR(date_naissance, 'YYYY-MM-DD') AS date_naissance,
+                 lieu_naissance, nationalite, adresse, telephone, photo_path,
+                 created_at, updated_at`,
       [
         id, classeId, matricule, nom, prenom, sexe, date_naissance || null,
         lieu_naissance || null, nationalite || null, adresse || null,
@@ -50,7 +54,46 @@ export class Student {
     return result.rows[0];
   }
 
-static async findAllByCollege(collegeId) {
+  static async update(id, data) {
+    const {
+      nom, prenom, sexe, date_naissance,
+      lieu_naissance, nationalite, adresse, telephone,
+    } = data;
+
+    const result = await query(
+      `UPDATE eleves
+       SET nom = $1, prenom = $2, sexe = $3, date_naissance = $4,
+           lieu_naissance = $5, nationalite = $6, adresse = $7,
+           telephone = $8, updated_at = NOW()
+       WHERE id = $9
+       RETURNING id, classe_id, matricule, nom, prenom, sexe,
+                 TO_CHAR(date_naissance, 'YYYY-MM-DD') AS date_naissance,
+                 lieu_naissance, nationalite, adresse, telephone, photo_path,
+                 created_at, updated_at`,
+      [nom, prenom, sexe, date_naissance || null, lieu_naissance || null,
+       nationalite || null, adresse || null, telephone || null, id]
+    );
+
+    return result.rows[0];
+  }
+
+  static async updatePhoto(id, photoPath) {
+    const result = await query(
+      `UPDATE eleves SET photo_path = $1, updated_at = NOW() WHERE id = $2
+       RETURNING id, classe_id, matricule, nom, prenom, sexe,
+                 TO_CHAR(date_naissance, 'YYYY-MM-DD') AS date_naissance,
+                 lieu_naissance, nationalite, adresse, telephone, photo_path,
+                 created_at, updated_at`,
+      [photoPath, id]
+    );
+    return result.rows[0];
+  }
+
+  static async delete(id) {
+    await query('DELETE FROM eleves WHERE id = $1', [id]);
+  }
+
+  static async findAllByCollege(collegeId) {
     const result = await query(
       `SELECT e.id, e.classe_id, e.matricule, e.nom, e.prenom, e.sexe,
               TO_CHAR(e.date_naissance, 'YYYY-MM-DD') AS date_naissance,

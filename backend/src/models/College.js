@@ -4,13 +4,8 @@ import { v4 as uuidv4 } from 'uuid';
 export class College {
   static async create(data) {
     const {
-      nom,
-      commune,
-      departement,
-      directeur_nom,
-      directeur_contact,
-      email,
-      telephone,
+      nom, commune, departement, directeur_nom,
+      directeur_contact, email, telephone,
     } = data;
 
     const id = uuidv4();
@@ -18,7 +13,7 @@ export class College {
 
     const result = await query(
       `INSERT INTO colleges (
-        id, nom, commune, departement, directeur_nom, directeur_contact, 
+        id, nom, commune, departement, directeur_nom, directeur_contact,
         email, telephone, created_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
@@ -29,21 +24,16 @@ export class College {
   }
 
   static async findAll() {
-    const result = await query(
-      `SELECT * FROM colleges ORDER BY nom ASC`
-    );
+    const result = await query(`SELECT * FROM colleges ORDER BY nom ASC`);
     return result.rows;
   }
 
   static async findById(id) {
-    const result = await query(
-      'SELECT * FROM colleges WHERE id = $1',
-      [id]
-    );
+    const result = await query('SELECT * FROM colleges WHERE id = $1', [id]);
     return result.rows[0];
   }
 
-static async findByCommune(commune, departement) {
+  static async findByCommune(commune, departement) {
     const result = await query(
       `SELECT co.*,
               COUNT(DISTINCT e.id)::int AS students_count,
@@ -63,8 +53,8 @@ static async findByCommune(commune, departement) {
     const { nom, directeur_nom, directeur_contact, email, telephone } = data;
 
     const result = await query(
-      `UPDATE colleges 
-       SET nom = $1, directeur_nom = $2, directeur_contact = $3, 
+      `UPDATE colleges
+       SET nom = $1, directeur_nom = $2, directeur_contact = $3,
            email = $4, telephone = $5, updated_at = NOW()
        WHERE id = $6
        RETURNING *`,

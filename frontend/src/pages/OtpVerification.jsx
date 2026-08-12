@@ -4,7 +4,7 @@ import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
-export default function OtpVerification() {
+export default function OtpVerification({ onLoginSuccess }) {
   const [otpCode, setOtpCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -64,6 +64,11 @@ export default function OtpVerification() {
 
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
+
+      // Appeler le callback pour mettre à jour l'état App
+      if (onLoginSuccess) {
+        onLoginSuccess();
+      }
 
       navigate('/dashboard');
     } catch (err) {

@@ -146,7 +146,7 @@ export const downloadTemplate = async (req, res) => {
       { header: 'Date de naissance (JJ/MM/AAAA)', key: 'date_naissance', width: 28 },
       { header: 'Lieu de naissance', key: 'lieu_naissance', width: 22 },
       { header: 'Nationalité', key: 'nationalite', width: 16 },
-      { header: 'Adresse', key: 'adresse', width: 30 },
+      { header: 'Contact parent', key: 'adresse', width: 20 },
     ];
 
     worksheet.getRow(1).font = { bold: true };
@@ -159,7 +159,7 @@ export const downloadTemplate = async (req, res) => {
       date_naissance: '01/02/2009',
       lieu_naissance: 'Cotonou',
       nationalite: 'BENINOISE',
-      adresse: 'Akpakpa, Cotonou',
+      adresse: '95961070',
     });
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

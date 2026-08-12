@@ -4,24 +4,18 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 const api = axios.create({
   baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  headers: { 'Content-Type': 'application/json' },
 });
 
-// Intercepteur pour ajouter le token JWT
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+    if (token) config.headers.Authorization = `Bearer ${token}`;
     return config;
   },
   (error) => Promise.reject(error)
 );
 
-// Intercepteur pour gérer les erreurs
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -34,7 +28,6 @@ api.interceptors.response.use(
   }
 );
 
-// ====== AUTH ======
 export const authAPI = {
   login: (email, password) => api.post('/auth/login', { email, password }),
   register: (email, password, confirmPassword) =>
@@ -42,7 +35,6 @@ export const authAPI = {
   verify: () => api.get('/auth/verify'),
 };
 
-// ====== COLLEGES ======
 export const collegeAPI = {
   getAll: () => api.get('/colleges'),
   getByCommune: (commune, departement) =>
@@ -61,7 +53,6 @@ export const collegeAPI = {
   getStats: (id) => api.get(`/colleges/${id}/stats`),
 };
 
-// ====== CLASSES ======
 export const classAPI = {
   getByCollege: (collegeId) => api.get(`/classes/${collegeId}/classes`),
   getById: (classId) => api.get(`/classes/class/${classId}`),
