@@ -23,11 +23,11 @@ export class College {
     return result.rows[0];
   }
 
-static async findAll() {
+  static async findAll() {
     const result = await query(
       `SELECT co.*,
-              COUNT(DISTINCT e.id)::int AS students_count,
-              0 AS cards_generated
+              COALESCE(COUNT(DISTINCT e.id), 0)::int AS students_count,
+              COALESCE(COUNT(DISTINCT e.id), 0)::int AS cards_generated
        FROM colleges co
        LEFT JOIN classes cl ON cl.college_id = co.id
        LEFT JOIN eleves e ON e.classe_id = cl.id
@@ -44,8 +44,8 @@ static async findAll() {
   static async findByCommune(commune, departement) {
     const result = await query(
       `SELECT co.*,
-              COUNT(DISTINCT e.id)::int AS students_count,
-              0 AS cards_generated
+              COALESCE(COUNT(DISTINCT e.id), 0)::int AS students_count,
+              COALESCE(COUNT(DISTINCT e.id), 0)::int AS cards_generated
        FROM colleges co
        LEFT JOIN classes cl ON cl.college_id = co.id
        LEFT JOIN eleves e ON e.classe_id = cl.id
