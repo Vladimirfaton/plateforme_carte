@@ -1,173 +1,144 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import axios from 'axios';
-
-const API_URL = import.meta.env.VITE_API_URL;
+import { IdCard, Loader2 } from 'lucide-react';
+import { authAPI } from '../services/api';
 
 export default function OtpVerification({ onLoginSuccess }) {
   const [otpCode, setOtpCode] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(180); // 3 minutes
+  const [resending, setResending] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(180);
   const [email, setEmail] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
-    // Récupérer l'email depuis le state de la navigation
-    if (location.state?.email) {
-      setEmail(location.state.email);
-    } else {
-      // Si pas d'email, rediriger vers le login
-      navigate('/login');
-    }
+    if (location.state?.email) setEmail(location.state.email);
+    else navigate('/login');
   }, [location, navigate]);
 
-  // Décompte du minuteur
   useEffect(() => {
-    if (timeLeft <= 0) {
-      setError('Le code OTP a expiré. Veuillez vous reconnecter.');
-      return;
-    }
-
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => prev - 1);
-    }, 1000);
-
+    if (timeLeft <= 0) return;
+    const timer = setInterval(() => setTimeLeft(t => t - 1), 1000);
     return () => clearInterval(timer);
   }, [timeLeft]);
 
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+  const formatTime = (s) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 
-  const handleSubmit = async (e) => {
+  const submit = async (e) => {
     e.preventDefault();
     setError('');
+
+    if (otpCode.length !== 6) {
+      setError('Entrez un code à 6 chiffres');
+      return;
+    }
+
     setLoading(true);
-
     try {
-      if (!otpCode || otpCode.length !== 6) {
-        setError('Veuillez entrer un code OTP valide (6 chiffres)');
-        setLoading(false);
-        return;
-      }
-
-      const response = await axios.post(`${API_URL}/auth/verify-otp`, {
-        email,
-        otpCode,
-      });
-
-      const { token, user } = response.data;
-
+      const res = await authAPI.verifyOtp(email, otpCode);
+      const { token, user } = res.data;
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(user));
-
-      // Appeler le callback pour mettre à jour l'état App
-      if (onLoginSuccess) {
-        onLoginSuccess();
-      }
-
+      onLoginSuccess?.();
       navigate('/dashboard');
     } catch (err) {
-      setError(err.response?.data?.error || 'Erreur lors de la vérification du code');
+      setError(err.response?.data?.error || 'Erreur lors de la vérification');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleResendOTP = async () => {
+  const resend = async () => {
     setError('');
-    setLoading(true);
-
+    setNotice('');
+    setResending(true);
     try {
-      // Note: Vous devriez créer une route /auth/resend-otp au backend
-      // Pour l'instant, nous affichons juste un message
-      setError('Fonctionnalité de renvoi en cours de développement');
+      await authAPI.resendOtp(email);
+      setTimeLeft(180);
+      setOtpCode('');
+      setNotice('Un nouveau code a été envoyé');
     } catch (err) {
-      setError('Erreur lors de l\'envoi du nouveau code');
+      setError(err.response?.data?.error || "Erreur lors de l'envoi du code");
     } finally {
-      setLoading(false);
+      setResending(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-900 to-blue-700 flex items-center justify-center">
-      <div className="bg-white rounded-lg shadow-2xl p-8 w-full max-w-md">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">FVS</h1>
-          <p className="text-gray-600 mt-2">Vérification de Connexion</p>
+    <div className="min-h-screen bg-[#f7faf8] flex items-center justify-center px-4">
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-8 w-full max-w-sm">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-9 h-9 rounded-lg bg-emerald-600 flex items-center justify-center">
+            <IdCard className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-base font-semibold text-slate-800 leading-tight">FVS</h1>
+            <p className="text-xs text-slate-500">Vérification de connexion</p>
+          </div>
         </div>
 
-        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-sm text-gray-700">
-            Un code OTP a été envoyé à : <strong>{email}</strong>
-          </p>
-          <p className="text-xs text-gray-600 mt-2">
-            ⏱️ Code valide pendant {formatTime(timeLeft)}
-          </p>
+        <div className="mb-5 px-4 py-3 bg-emerald-50 border border-emerald-100 rounded-lg text-xs text-emerald-800">
+          Code envoyé à <span className="font-medium">{email}</span>
+          <div className="text-emerald-600 mt-1">
+            {timeLeft > 0 ? `Valide encore ${formatTime(timeLeft)}` : 'Code expiré'}
+          </div>
         </div>
 
         {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
+          <div className="mb-4 px-4 py-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-sm">
             {error}
           </div>
         )}
-
-        <form onSubmit={handleSubmit}>
-          <div className="mb-6">
-            <label className="block text-gray-700 font-semibold mb-2">
-              Code OTP (6 chiffres)
-            </label>
-            <input
-              type="text"
-              value={otpCode}
-              onChange={(e) => {
-                const value = e.target.value.replace(/\D/g, '').slice(0, 6);
-                setOtpCode(value);
-              }}
-              maxLength="6"
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-center text-3xl font-bold tracking-widest"
-              placeholder="000000"
-              required
-              disabled={timeLeft <= 0}
-            />
+        {notice && (
+          <div className="mb-4 px-4 py-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-sm">
+            {notice}
           </div>
+        )}
+
+        <form onSubmit={submit}>
+          <label className="block text-xs font-medium text-slate-600 mb-1.5">Code à 6 chiffres</label>
+          <input
+            type="text"
+            value={otpCode}
+            onChange={e => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            maxLength={6}
+            disabled={timeLeft <= 0}
+            placeholder="000000"
+            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-center text-2xl font-semibold tracking-[0.4em] focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
+            required
+          />
 
           <button
             type="submit"
             disabled={loading || timeLeft <= 0}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full mt-5 flex items-center justify-center gap-2 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg text-sm font-medium cursor-pointer"
           >
-            {loading ? 'Vérification...' : 'Vérifier le Code'}
+            {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+            {loading ? 'Vérification' : 'Vérifier le code'}
           </button>
         </form>
 
-        <div className="mt-6 text-center">
-          <p className="text-sm text-gray-600 mb-3">Vous n'avez pas reçu le code ?</p>
+        <div className="mt-5 text-center">
           <button
-            onClick={handleResendOTP}
-            disabled={loading}
-            className="text-blue-600 hover:text-blue-700 font-semibold text-sm transition disabled:opacity-50"
+            onClick={resend}
+            disabled={resending}
+            className="text-sm text-emerald-700 hover:text-emerald-800 font-medium cursor-pointer disabled:opacity-50"
           >
-            Renvoyer le code
+            {resending ? 'Envoi...' : 'Renvoyer le code'}
           </button>
         </div>
 
-        <div className="mt-6 text-center border-t pt-6">
+        <div className="mt-6 pt-5 border-t border-slate-100 text-center">
           <button
             onClick={() => navigate('/login')}
-            className="text-gray-600 hover:text-gray-900 text-sm transition"
+            className="text-xs text-slate-500 hover:text-slate-700 cursor-pointer"
           >
-            ← Retour à la connexion
+            Retour à la connexion
           </button>
         </div>
-
-        <p className="text-center text-gray-600 text-xs mt-8">
-          Plateforme interne FVS • Contact: +229 97 268 741
-        </p>
       </div>
     </div>
   );

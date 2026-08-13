@@ -1,16 +1,16 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
-  Building2, FileText, CreditCard, LogOut, Trash2, Search,
-  Users, School, IdCard, ChevronRight, Plus, Pencil, ArrowLeft, Loader2
+  FileText, CreditCard, LogOut, Trash2, Search, MapPin, Upload, Download,
+  FileSpreadsheet, Image as ImageIcon, Check, X, Users, School, IdCard,
+  ChevronRight, Plus, Pencil, ArrowLeft, Loader2, Printer, Settings2, FileDown
 } from 'lucide-react';
-import api, { collegeAPI, classAPI, studentAPI } from '../services/api';
-
-const TABS = [
-  { key: 'colleges', label: 'Collèges', icon: Building2 },
-  { key: 'brouillon', label: 'Brouillon', icon: FileText },
-  { key: 'cartes', label: 'Cartes finales', icon: CreditCard },
-];
+import api, { collegeAPI, classAPI, studentAPI, importAPI, FILE_BASE_URL } from '../services/api';
+import {
+  generateBrouillonPDF, generateCollegeBrouillonPDF,
+  generateFinalCardsPDF, generateSingleCardPDF, generateCardImages,
+  printFinalCards, getSchoolYear, DEFAULT_CARD_MM,
+} from '../utils/pdfUtils';
 
 const NIVEAU_ORDRE = ['6ème', '5ème', '4ème', '3ème', '2nde', '1ère', 'Tle', 'Terminale'];
 
@@ -31,70 +31,105 @@ const trierClasses = (list) =>
     return (a.serie || '').localeCompare(b.serie || '', 'fr', { numeric: true });
   });
 
-export default function Dashboard({ onLogout }) {
-  const navigate = useNavigate();
+const photoUrl = (path) =>
+  path ? `${FILE_BASE_URL}/uploads/photos/${path.split(/[\\/]/).pop()}` : null;
 
-  const [activeTab, setActiveTab] = useState('colleges');
-  const [loading, setLoading] = useState(false);
+const signatureUrl = (path) =>
+  path ? `${FILE_BASE_URL}/uploads/signatures/${path.split(/[\\/]/).pop()}` : null;
+
+export default function Dashboard({ onLogout }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const [loading, setLoading] = useState(true);
 
   const [departments, setDepartments] = useState([]);
   const [communes, setCommunes] = useState([]);
-  const [selectedDept, setSelectedDept] = useState('Littoral');
-  const [selectedCommune, setSelectedCommune] = useState('Cotonou');
+  const [selectedDept, setSelectedDept] = useState('');
+  const [selectedCommune, setSelectedCommune] = useState('');
 
-  const [colleges, setColleges] = useState([]);
+  const [allColleges, setAllColleges] = useState([]);
   const [activeCollege, setActiveCollege] = useState(null);
   const [classes, setClasses] = useState([]);
   const [activeClass, setActiveClass] = useState(null);
   const [students, setStudents] = useState([]);
 
-  const [stats, setStats] = useState({ colleges: 0, students: 0, cards: 0 });
+  const [showCollegeForm, setShowCollegeForm] = useState(false);
+  const [editingCollege, setEditingCollege] = useState(null);
 
   useEffect(() => {
     api.get('/locations/departements')
       .then(r => setDepartments(r.data || []))
       .catch(() => setDepartments([]));
+    loadAllColleges();
   }, []);
 
   useEffect(() => {
-    if (!selectedDept) return;
+    const collegeId = searchParams.get('college');
+    const classeId = searchParams.get('classe');
+    if (!collegeId) return;
+
+    (async () => {
+      setLoading(true);
+      try {
+        const collegeRes = await collegeAPI.getById(collegeId);
+        const college = collegeRes.data;
+        setActiveCollege(college);
+
+        const classesRes = await classAPI.getByCollege(collegeId);
+        setClasses(trierClasses(classesRes.data || []));
+
+        if (classeId) {
+          const studentsRes = await studentAPI.getByClass(classeId);
+          setActiveClass(studentsRes.data?.classInfo);
+          setStudents(studentsRes.data?.students || []);
+        }
+      } catch {
+        setSearchParams({});
+      } finally {
+        setLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    setSelectedCommune('');
+    if (!selectedDept) { setCommunes([]); return; }
     api.get(`/locations/communes/${selectedDept}`)
-      .then(r => {
-        const list = r.data || [];
-        setCommunes(list);
-        if (list.length) setSelectedCommune(list[0]);
-      })
+      .then(r => setCommunes(r.data || []))
       .catch(() => setCommunes([]));
   }, [selectedDept]);
 
-  useEffect(() => {
-    if (!selectedCommune || !selectedDept) return;
-    loadColleges();
-  }, [selectedCommune, selectedDept]);
-
-  const loadColleges = async () => {
+  const loadAllColleges = async () => {
     setLoading(true);
     try {
-      const r = await collegeAPI.getByCommune(selectedCommune, selectedDept);
-      const list = r.data || [];
-      setColleges(list);
-      setStats({
-        colleges: list.length,
-        students: list.reduce((s, c) => s + (c.students_count || 0), 0),
-        cards: list.reduce((s, c) => s + (c.cards_generated || 0), 0),
-      });
+      const r = await collegeAPI.getAll();
+      setAllColleges(r.data || []);
     } catch {
-      setColleges([]);
-      setStats({ colleges: 0, students: 0, cards: 0 });
+      setAllColleges([]);
     } finally {
       setLoading(false);
     }
   };
 
+  const filteredColleges = useMemo(() => {
+    return allColleges.filter(c =>
+      (!selectedDept || c.departement === selectedDept) &&
+      (!selectedCommune || c.commune === selectedCommune)
+    );
+  }, [allColleges, selectedDept, selectedCommune]);
+
+  const stats = useMemo(() => ({
+    colleges: allColleges.length,
+    students: allColleges.reduce((s, c) => s + (c.students_count || 0), 0),
+    cards: allColleges.reduce((s, c) => s + (c.cards_generated || 0), 0),
+  }), [allColleges]);
+
   const openCollege = async (college) => {
     setActiveCollege(college);
     setActiveClass(null);
     setStudents([]);
+    setSearchParams({ college: college.id });
     setLoading(true);
     try {
       const res = await classAPI.getByCollege(college.id);
@@ -108,6 +143,7 @@ export default function Dashboard({ onLogout }) {
 
   const openClass = async (cls) => {
     setActiveClass(cls);
+    setSearchParams({ college: activeCollege.id, classe: cls.id });
     setLoading(true);
     try {
       const r = await studentAPI.getByClass(cls.id);
@@ -119,10 +155,29 @@ export default function Dashboard({ onLogout }) {
     }
   };
 
-  const goBack = () => {
-    if (activeClass) { setActiveClass(null); setStudents([]); }
-    else if (activeCollege) { setActiveCollege(null); setClasses([]); }
+  const refreshStudents = async () => {
+    if (!activeClass) return;
+    try {
+      const r = await studentAPI.getByClass(activeClass.id);
+      setStudents(r.data?.students || r.data || []);
+    } catch {
+      // silencieux
+    }
   };
+
+  const goBack = () => {
+    if (activeClass) {
+      setActiveClass(null);
+      setStudents([]);
+      setSearchParams({ college: activeCollege.id });
+    } else if (activeCollege) {
+      setActiveCollege(null);
+      setClasses([]);
+      setSearchParams({});
+    }
+  };
+
+  const canCreate = !!selectedDept && !!selectedCommune;
 
   return (
     <div className="min-h-screen bg-[#f7faf8]">
@@ -147,69 +202,26 @@ export default function Dashboard({ onLogout }) {
         </div>
       </header>
 
-      <div className="sticky top-[73px] z-20 bg-[#f7faf8] border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-6 pt-6">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-            <StatCard icon={School} label="Collèges" value={stats.colleges} color="emerald" />
-            <StatCard icon={Users} label="Élèves" value={stats.students} color="cyan" />
-            <StatCard icon={CreditCard} label="Cartes générées" value={stats.cards} color="violet" />
-          </div>
-
-          <div className="flex gap-1 overflow-x-auto">
-            {TABS.map(t => {
-              const Icon = t.icon;
-              const on = activeTab === t.key;
-              return (
-                <button
-                  key={t.key}
-                  onClick={() => setActiveTab(t.key)}
-                  className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition cursor-pointer ${
-                    on ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  {t.label}
-                </button>
-              );
-            })}
+      {!activeCollege && (
+        <div className="sticky top-[73px] z-20 bg-[#f7faf8] border-b border-slate-200">
+          <div className="max-w-7xl mx-auto px-6 py-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <StatCard icon={School} label="Collèges" value={stats.colleges} color="emerald" />
+              <StatCard icon={Users} label="Élèves" value={stats.students} color="cyan" />
+              <StatCard icon={CreditCard} label="Cartes générées" value={stats.cards} color="violet" />
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <div className="max-w-7xl mx-auto px-6 py-8">
-        {activeTab === 'colleges' && !activeCollege && (
-          <div className="bg-white border border-slate-200 rounded-xl p-5 mb-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-              <Field label="Département">
-                <select
-                  value={selectedDept}
-                  onChange={e => setSelectedDept(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
-                >
-                  {departments.map(d => <option key={d} value={d}>{d}</option>)}
-                </select>
-              </Field>
-              <Field label="Commune">
-                <select
-                  value={selectedCommune}
-                  onChange={e => setSelectedCommune(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
-                >
-                  {communes.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </Field>
-              <button
-                onClick={() => navigate(`/colleges/new?dept=${selectedDept}&commune=${selectedCommune}`)}
-                className="flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                Nouveau collège
-              </button>
-            </div>
+        {!activeCollege && (
+          <div className="flex items-center gap-2 mb-5 text-sm">
+            <span className="text-slate-700 font-medium">Collèges</span>
           </div>
         )}
 
-        {activeTab === 'colleges' && activeCollege && (
+        {activeCollege && (
           <div className="flex items-center gap-2 mb-5 text-sm">
             <button onClick={goBack} className="flex items-center gap-1.5 text-slate-500 hover:text-slate-800 cursor-pointer">
               <ArrowLeft className="w-4 h-4" />
@@ -226,6 +238,60 @@ export default function Dashboard({ onLogout }) {
           </div>
         )}
 
+        {!activeCollege && (
+          <div className="bg-white border border-slate-200 rounded-xl p-5 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+              <Field label="Département">
+                <select
+                  value={selectedDept}
+                  onChange={e => setSelectedDept(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                >
+                  <option value="">Sélectionner un département</option>
+                  {departments.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </Field>
+              <Field label="Commune">
+                <select
+                  value={selectedCommune}
+                  onChange={e => setSelectedCommune(e.target.value)}
+                  disabled={!selectedDept}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <option value="">Sélectionner une commune</option>
+                  {communes.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </Field>
+              <div>
+                <button
+                  onClick={() => { setEditingCollege(null); setShowCollegeForm(true); }}
+                  disabled={!canCreate}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  Nouveau collège
+                </button>
+                {!canCreate && (
+                  <p className="text-xs text-slate-400 mt-1.5">
+                    Choisissez un département et une commune
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!activeCollege && showCollegeForm && (
+          <CollegeFormPanel
+            mode={editingCollege ? 'edit' : 'create'}
+            initial={editingCollege}
+            departement={selectedDept}
+            commune={selectedCommune}
+            onClose={() => { setShowCollegeForm(false); setEditingCollege(null); }}
+            onSaved={loadAllColleges}
+          />
+        )}
+
         {loading ? (
           <div className="flex items-center justify-center py-20 text-slate-400">
             <Loader2 className="w-5 h-5 animate-spin mr-2" />
@@ -233,35 +299,33 @@ export default function Dashboard({ onLogout }) {
           </div>
         ) : (
           <>
-            {activeTab === 'colleges' && !activeCollege && (
+            {!activeCollege && (
               <CollegeGrid
-                colleges={colleges}
+                colleges={filteredColleges}
+                hasFilter={!!selectedDept || !!selectedCommune}
                 onOpen={openCollege}
-                onEdit={id => navigate(`/colleges/${id}/edit`)}
-                onCreate={() => navigate(`/colleges/new?dept=${selectedDept}&commune=${selectedCommune}`)}
+                onEdit={c => { setEditingCollege(c); setShowCollegeForm(true); }}
               />
             )}
 
-            {activeTab === 'colleges' && activeCollege && !activeClass && (
+            {activeCollege && !activeClass && (
               <ClassGrid
                 classes={classes}
                 onOpen={openClass}
                 collegeId={activeCollege.id}
                 collegeNom={activeCollege.nom}
+                collegeInfo={activeCollege}
                 onRefresh={() => openCollege(activeCollege)}
               />
             )}
 
-            {activeTab === 'colleges' && activeClass && (
-              <StudentTable students={students} cls={activeClass} navigate={navigate} />
-            )}
-
-            {activeTab === 'brouillon' && (
-              <Panel><p className="text-sm text-slate-500">Ouvrez une classe depuis l'onglet Collèges pour générer son brouillon.</p></Panel>
-            )}
-
-            {activeTab === 'cartes' && (
-              <Panel><p className="text-sm text-slate-500">Ouvrez une classe depuis l'onglet Collèges pour générer ses cartes.</p></Panel>
+            {activeCollege && activeClass && (
+              <ClassPanel
+                cls={activeClass}
+                students={students}
+                collegeInfo={activeCollege}
+                onRefresh={refreshStudents}
+              />
             )}
           </>
         )}
@@ -269,6 +333,8 @@ export default function Dashboard({ onLogout }) {
     </div>
   );
 }
+
+/* ============== primitives ============== */
 
 const COLORS = {
   emerald: { bg: 'bg-emerald-50', text: 'text-emerald-600' },
@@ -304,17 +370,32 @@ function Panel({ children }) {
   return <div className="bg-white border border-slate-200 rounded-xl p-8 text-center">{children}</div>;
 }
 
-function CollegeGrid({ colleges, onOpen, onEdit, onCreate }) {
+function Notice({ type = 'error', children, onClose }) {
+  const styles = type === 'error'
+    ? 'bg-rose-50 border-rose-200 text-rose-700'
+    : 'bg-emerald-50 border-emerald-200 text-emerald-700';
+  return (
+    <div className={`mb-4 flex items-start gap-2 px-4 py-3 border rounded-lg text-sm ${styles}`}>
+      {type === 'error' ? <X className="w-4 h-4 mt-0.5 shrink-0" /> : <Check className="w-4 h-4 mt-0.5 shrink-0" />}
+      <span className="flex-1">{children}</span>
+      {onClose && (
+        <button onClick={onClose} className="cursor-pointer shrink-0">
+          <X className="w-3.5 h-3.5" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ============== Collèges ============== */
+
+function CollegeGrid({ colleges, hasFilter, onOpen, onEdit }) {
   if (!colleges.length) {
     return (
       <Panel>
-        <p className="text-sm text-slate-500 mb-4">Aucun collège pour cette localisation.</p>
-        <button
-          onClick={onCreate}
-          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium cursor-pointer"
-        >
-          Créer le premier collège
-        </button>
+        <p className="text-sm text-slate-500">
+          {hasFilter ? 'Aucun collège ne correspond à ces critères.' : 'Aucun collège enregistré pour le moment.'}
+        </p>
       </Panel>
     );
   }
@@ -338,7 +419,7 @@ function CollegeGrid({ colleges, onOpen, onEdit, onCreate }) {
               </div>
             </div>
             <button
-              onClick={e => { e.stopPropagation(); onEdit(c.id); }}
+              onClick={e => { e.stopPropagation(); onEdit(c); }}
               className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md cursor-pointer"
               title="Modifier"
             >
@@ -361,13 +442,183 @@ function CollegeGrid({ colleges, onOpen, onEdit, onCreate }) {
   );
 }
 
-function ClassGrid({ classes, onOpen, collegeId, collegeNom, onRefresh }) {
+function CollegeFormPanel({ mode, initial, departement, commune, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    nom: initial?.nom || '',
+    directeur_nom: initial?.directeur_nom || '',
+    directeur_contact: initial?.directeur_contact || '',
+    email: initial?.email || '',
+    telephone: initial?.telephone || '',
+  });
+  const [signature, setSignature] = useState(null);
+  const [signaturePreview, setSignaturePreview] = useState(
+    initial?.signature_path ? signatureUrl(initial.signature_path) : null
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const loc = mode === 'edit'
+    ? { departement: initial.departement, commune: initial.commune }
+    : { departement, commune };
+
+  const handleSignature = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!['image/png', 'image/jpeg'].includes(file.type)) {
+      setError('La signature doit être en PNG ou JPEG');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setError('La signature ne doit pas dépasser 2 Mo');
+      return;
+    }
+    setError('');
+    setSignature(file);
+    const reader = new FileReader();
+    reader.onloadend = () => setSignaturePreview(reader.result);
+    reader.readAsDataURL(file);
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!form.nom.trim()) return setError('Le nom du collège est requis');
+    if (!form.directeur_nom.trim()) return setError('Le nom du directeur est requis');
+
+    setSaving(true);
+    try {
+      let id = initial?.id;
+      if (mode === 'edit') {
+        await collegeAPI.update(id, form);
+      } else {
+        const res = await collegeAPI.create({ ...form, ...loc });
+        id = res.data.id;
+      }
+      if (signature && id) await collegeAPI.uploadSignature(id, signature);
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.error || "Erreur lors de l'enregistrement");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="bg-white border border-emerald-200 rounded-xl p-6 mb-6">
+      <h3 className="text-sm font-semibold text-slate-800 mb-4">
+        {mode === 'edit' ? 'Modifier le collège' : 'Nouveau collège'}
+      </h3>
+
+      <div className="flex items-center gap-2 px-4 py-3 bg-emerald-50 border border-emerald-100 rounded-lg mb-5">
+        <MapPin className="w-4 h-4 text-emerald-600 shrink-0" />
+        <span className="text-sm text-emerald-800">{loc.commune}, {loc.departement}</span>
+      </div>
+
+      {error && <Notice>{error}</Notice>}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+        <div className="sm:col-span-2">
+          <label className="block text-xs font-medium text-slate-600 mb-1.5">Nom du collège</label>
+          <input
+            type="text"
+            value={form.nom}
+            onChange={e => setForm({ ...form, nom: e.target.value })}
+            placeholder="Collège Catholique Ste Cécile"
+            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            required
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="block text-xs font-medium text-slate-600 mb-1.5">Nom du directeur</label>
+          <input
+            type="text"
+            value={form.directeur_nom}
+            onChange={e => setForm({ ...form, directeur_nom: e.target.value })}
+            placeholder="Victor O. LAMODI"
+            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            required
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1.5">Email du directeur</label>
+          <input
+            type="email"
+            value={form.directeur_contact}
+            onChange={e => setForm({ ...form, directeur_contact: e.target.value })}
+            placeholder="directeur@college.com"
+            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1.5">Téléphone</label>
+          <input
+            type="tel"
+            value={form.telephone}
+            onChange={e => setForm({ ...form, telephone: e.target.value })}
+            placeholder="+229 97 268 741"
+            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="block text-xs font-medium text-slate-600 mb-1.5">Email du collège</label>
+          <input
+            type="email"
+            value={form.email}
+            onChange={e => setForm({ ...form, email: e.target.value })}
+            placeholder="contact@college.com"
+            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+        </div>
+      </div>
+
+      <div className="mb-5">
+        <label className="block text-xs font-medium text-slate-600 mb-1.5">
+          Signature du directeur (PNG/JPEG, 200×80px)
+        </label>
+        <input
+          type="file"
+          accept="image/png,image/jpeg"
+          onChange={handleSignature}
+          className="block w-full text-sm text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 file:cursor-pointer"
+        />
+        {signaturePreview && (
+          <div className="mt-3 border border-slate-200 rounded-lg p-3 bg-slate-50 inline-block">
+            <img src={signaturePreview} alt="Signature" style={{ maxWidth: 200, maxHeight: 80 }} />
+          </div>
+        )}
+      </div>
+
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={saving}
+          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg text-sm font-medium cursor-pointer"
+        >
+          {saving ? 'Enregistrement' : mode === 'edit' ? 'Enregistrer' : 'Créer le collège'}
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium cursor-pointer"
+        >
+          Annuler
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/* ============== Classes ============== */
+
+function ClassGrid({ classes, onOpen, collegeId, collegeNom, collegeInfo, onRefresh }) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ niveau: '', serie: '' });
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
+  const [generatingCollege, setGeneratingCollege] = useState(false);
 
   const reset = () => {
     setForm({ niveau: '', serie: '' });
@@ -416,12 +667,29 @@ function ClassGrid({ classes, onOpen, collegeId, collegeNom, onRefresh }) {
     }
   };
 
+  const handleCollegeBrouillon = async () => {
+    setError('');
+    setGeneratingCollege(true);
+    try {
+      const withStudents = [];
+      for (const cls of classes) {
+        const res = await studentAPI.getByClass(cls.id);
+        withStudents.push({ classInfo: cls, students: res.data?.students || res.data || [] });
+      }
+      await generateCollegeBrouillonPDF(withStudents, collegeInfo);
+    } catch {
+      setError('Erreur lors de la génération du brouillon du collège');
+    } finally {
+      setGeneratingCollege(false);
+    }
+  };
+
   const q = search.trim().toLowerCase();
   const visibles = q ? classes.filter(c => (c.code || '').toLowerCase().includes(q)) : classes;
 
   return (
     <div>
-      <div className="sticky top-[233px] z-10 -mx-6 px-6 py-3 bg-[#f7faf8] border-b border-slate-200 mb-5">
+      <div className="sticky top-[73px] z-10 -mx-6 px-6 py-3 bg-[#f7faf8] border-b border-slate-200 mb-5">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2 mr-auto min-w-0">
             <School className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -443,6 +711,15 @@ function ClassGrid({ classes, onOpen, collegeId, collegeNom, onRefresh }) {
           </div>
 
           <button
+            onClick={handleCollegeBrouillon}
+            disabled={generatingCollege || !classes.length}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed text-slate-700 rounded-lg text-sm font-medium cursor-pointer whitespace-nowrap"
+          >
+            <Download className="w-4 h-4" />
+            {generatingCollege ? 'Génération...' : 'Brouillon du collège'}
+          </button>
+
+          <button
             onClick={showForm ? reset : openCreate}
             className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium cursor-pointer whitespace-nowrap"
           >
@@ -452,11 +729,7 @@ function ClassGrid({ classes, onOpen, collegeId, collegeNom, onRefresh }) {
         </div>
       </div>
 
-      {error && (
-        <div className="mb-4 px-4 py-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-sm">
-          {error}
-        </div>
-      )}
+      {error && <Notice onClose={() => setError('')}>{error}</Notice>}
 
       {showForm && (
         <form onSubmit={submit} className="bg-white border border-emerald-200 rounded-xl p-5 mb-5">
@@ -565,64 +838,1115 @@ function ClassGrid({ classes, onOpen, collegeId, collegeNom, onRefresh }) {
   );
 }
 
-function StudentTable({ students, cls, navigate }) {
+/* ============== Panneau de classe ============== */
+
+const CLASS_TABS = [
+  { key: 'eleves', label: 'Élèves', icon: Users },
+  { key: 'brouillon', label: 'Brouillon', icon: FileText },
+  { key: 'cartes', label: 'Cartes finales', icon: CreditCard },
+];
+
+function ClassPanel({ cls, students, collegeInfo, onRefresh }) {
+  const [tab, setTab] = useState('eleves');
+
   return (
     <div>
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="sticky top-[73px] z-10 -mx-6 px-6 py-3 bg-[#f7faf8] border-b border-slate-200 mb-5">
+        <div className="flex gap-1">
+          {CLASS_TABS.map(t => {
+            const Icon = t.icon;
+            const on = tab === t.key;
+            return (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition cursor-pointer ${
+                  on ? 'bg-emerald-50 text-emerald-700' : 'text-slate-500 hover:bg-slate-100'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                {t.label}
+                {t.key === 'eleves' && (
+                  <span className="text-xs text-slate-400">({students.length})</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {tab === 'eleves' && (
+        <ElevesSection classId={cls.id} students={students} onRefresh={onRefresh} />
+      )}
+      {tab === 'brouillon' && (
+        <BrouillonSection cls={cls} students={students} collegeInfo={collegeInfo} onRefresh={onRefresh} />
+      )}
+      {tab === 'cartes' && (
+        <CartesSection cls={cls} students={students} collegeInfo={collegeInfo} />
+      )}
+    </div>
+  );
+}
+
+/* ---- Élèves ---- */
+
+const emptyStudent = {
+  matricule: '', nom: '', prenom: '', sexe: 'M',
+  date_naissance: '', lieu_naissance: '', nationalite: 'BENINOISE', adresse: '',
+};
+
+const ELEVES_TABS = [
+  { key: 'list', label: 'Liste', icon: Search },
+  { key: 'manual', label: 'Ajouter', icon: Plus },
+  { key: 'import', label: 'Import Excel', icon: FileSpreadsheet },
+  { key: 'photos', label: 'Photos', icon: ImageIcon },
+];
+
+function ElevesSection({ classId, students, onRefresh }) {
+  const [sub, setSub] = useState('list');
+  const [search, setSearch] = useState('');
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+
+  const [form, setForm] = useState(emptyStudent);
+  const [photo, setPhoto] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+
+  const [excelFile, setExcelFile] = useState(null);
+  const [validation, setValidation] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const excelInputRef = useRef(null);
+
+  const [photoFiles, setPhotoFiles] = useState([]);
+  const [progress, setProgress] = useState(0);
+
+  const flash = (msg) => { setNotice(msg); setTimeout(() => setNotice(''), 4000); };
+
+  const visibles = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return students;
+    return students.filter(s =>
+      [s.matricule, s.nom, s.prenom].some(v => (v || '').toLowerCase().includes(q))
+    );
+  }, [students, search]);
+
+  const resetForm = () => { setForm(emptyStudent); setPhoto(null); setEditingId(null); };
+
+  const startEdit = (s) => {
+    setForm({
+      matricule: s.matricule,
+      nom: s.nom || '',
+      prenom: s.prenom || '',
+      sexe: s.sexe || 'M',
+      date_naissance: s.date_naissance || '',
+      lieu_naissance: s.lieu_naissance || '',
+      nationalite: s.nationalite || '',
+      adresse: s.adresse || '',
+    });
+    setEditingId(s.id);
+    setPhoto(null);
+    setSub('manual');
+  };
+
+  const submitStudent = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSaving(true);
+    try {
+      if (editingId) {
+        await studentAPI.update(editingId, form);
+        if (photo) await studentAPI.updatePhoto(editingId, photo);
+        flash('Élève mis à jour');
+      } else {
+        await studentAPI.create(classId, form, photo);
+        flash('Élève ajouté');
+      }
+      resetForm();
+      await onRefresh();
+      setSub('list');
+    } catch (err) {
+      setError(err.response?.data?.error || "Erreur lors de l'enregistrement");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeStudent = async (s) => {
+    if (!confirm(`Supprimer ${s.nom} ${s.prenom} (${s.matricule}) ?`)) return;
+    try {
+      await studentAPI.delete(s.id);
+      await onRefresh();
+      flash('Élève supprimé');
+    } catch {
+      setError('Erreur lors de la suppression');
+    }
+  };
+
+  const downloadTemplate = async () => {
+    try {
+      const res = await importAPI.downloadTemplate();
+      const url = URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'template_eleves.xlsx';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError('Erreur lors du téléchargement du template');
+    }
+  };
+
+  const handleExcelChange = (e) => {
+    const file = e.target.files[0] || null;
+    setExcelFile(file);
+    setValidation(null);
+    setError('');
+    e.target.value = '';
+  };
+
+  const cancelImport = () => {
+    setExcelFile(null);
+    setValidation(null);
+    setError('');
+    if (excelInputRef.current) excelInputRef.current.value = '';
+  };
+
+  const validateExcel = async () => {
+    if (!excelFile) return;
+    setError('');
+    setBusy(true);
+    try {
+      const res = await importAPI.validateExcel(excelFile);
+      setValidation(res.data);
+      if (!res.data.valid) setError(`${res.data.errors.length} erreur(s) détectée(s)`);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Erreur lors de la validation');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runImport = async () => {
+    if (!validation?.data?.length) return;
+    setBusy(true);
+    try {
+      const res = await importAPI.importStudents(classId, validation.data);
+      flash(`${res.data.imported} élève(s) importé(s)`);
+      if (res.data.errors?.length) setError(res.data.errors.join(' · '));
+      cancelImport();
+      await onRefresh();
+      setSub('list');
+    } catch (err) {
+      setError(err.response?.data?.error || "Erreur lors de l'import");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const uploadPhotos = async () => {
+    if (!photoFiles.length) return;
+    setBusy(true);
+    setError('');
+    let ok = 0;
+    const orphelins = [];
+
+    for (let i = 0; i < photoFiles.length; i++) {
+      const file = photoFiles[i];
+      const mat = file.name.replace(/\.[^.]+$/, '').trim().toUpperCase();
+      const student = students.find(s => (s.matricule || '').toUpperCase() === mat);
+
+      if (!student) { orphelins.push(file.name); }
+      else {
+        try {
+          await studentAPI.updatePhoto(student.id, file);
+          ok++;
+        } catch {
+          orphelins.push(file.name);
+        }
+      }
+      setProgress(Math.round(((i + 1) / photoFiles.length) * 100));
+    }
+
+    flash(`${ok} photo(s) associée(s)`);
+    if (orphelins.length) setError(`Sans correspondance : ${orphelins.join(', ')}`);
+    setPhotoFiles([]);
+    setProgress(0);
+    setBusy(false);
+    await onRefresh();
+  };
+
+  return (
+    <div>
+      <div className="flex gap-1 mb-5 border-b border-slate-200">
+        {ELEVES_TABS.map(t => {
+          const Icon = t.icon;
+          const on = sub === t.key;
+          return (
+            <button
+              key={t.key}
+              onClick={() => { setSub(t.key); setError(''); if (t.key !== 'manual') resetForm(); }}
+              className={`flex items-center gap-2 px-3 py-2.5 text-sm font-medium border-b-2 transition cursor-pointer ${
+                on ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {error && <Notice onClose={() => setError('')}>{error}</Notice>}
+      {notice && <Notice type="success">{notice}</Notice>}
+
+      {sub === 'list' && (
+        <>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="relative mr-auto">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Matricule, nom, prénom"
+                className="w-64 pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+            <button
+              onClick={() => { resetForm(); setSub('manual'); }}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              Ajouter un élève
+            </button>
+          </div>
+
+          {!visibles.length ? (
+            <Panel><p className="text-sm text-slate-500">{search ? 'Aucun résultat.' : 'Aucun élève dans cette classe.'}</p></Panel>
+          ) : (
+            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr className="text-left text-xs font-medium text-slate-500">
+                    <th className="px-4 py-3">Matricule</th>
+                    <th className="px-4 py-3">Nom</th>
+                    <th className="px-4 py-3">Prénom(s)</th>
+                    <th className="px-4 py-3">Sexe</th>
+                    <th className="px-4 py-3">Date et lieu de naissance</th>
+                    <th className="px-4 py-3">Contact parent</th>
+                    <th className="px-4 py-3">Photo</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibles.map(s => (
+                    <tr key={s.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
+                      <td className="px-4 py-3 font-medium text-slate-800">{s.matricule}</td>
+                      <td className="px-4 py-3 text-slate-700">{s.nom}</td>
+                      <td className="px-4 py-3 text-slate-700">{s.prenom}</td>
+                      <td className="px-4 py-3 text-slate-600">{s.sexe}</td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {s.date_naissance || '—'}{s.lieu_naissance ? ` · ${s.lieu_naissance}` : ''}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">{s.adresse || '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded ${
+                          s.photo_path ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                        }`}>
+                          {s.photo_path ? 'OK' : 'Manquante'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end gap-1">
+                          <button onClick={() => startEdit(s)} className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md cursor-pointer" title="Modifier">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => removeStudent(s)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md cursor-pointer" title="Supprimer">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {sub === 'manual' && (
+        <form onSubmit={submitStudent} className="bg-white border border-slate-200 rounded-xl p-6 max-w-3xl">
+          <h3 className="text-sm font-semibold text-slate-800 mb-5">
+            {editingId ? "Modifier l'élève" : 'Nouvel élève'}
+          </h3>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+            <Input label="Matricule" required disabled={!!editingId} value={form.matricule}
+              onChange={v => setForm({ ...form, matricule: v })} placeholder="MAT001" />
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1.5">Sexe</label>
+              <select
+                value={form.sexe}
+                onChange={e => setForm({ ...form, sexe: e.target.value })}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+              >
+                <option value="M">M</option>
+                <option value="F">F</option>
+              </select>
+            </div>
+            <Input label="Nom" required value={form.nom} onChange={v => setForm({ ...form, nom: v })} placeholder="HOUNDNJE" />
+            <Input label="Prénom(s)" required value={form.prenom} onChange={v => setForm({ ...form, prenom: v })} placeholder="Oswell Séwanu" />
+            <Input label="Date de naissance" type="date" value={form.date_naissance} onChange={v => setForm({ ...form, date_naissance: v })} />
+            <Input label="Lieu de naissance" value={form.lieu_naissance} onChange={v => setForm({ ...form, lieu_naissance: v })} placeholder="Cotonou" />
+            <Input label="Nationalité" value={form.nationalite} onChange={v => setForm({ ...form, nationalite: v })} placeholder="BENINOISE" />
+            <Input label="Contact parent" value={form.adresse} onChange={v => setForm({ ...form, adresse: v })} placeholder="95961070" />
+          </div>
+
+          <div className="mb-5">
+            <label className="block text-xs font-medium text-slate-600 mb-1.5">
+              Photo {editingId ? '(laisser vide pour conserver)' : '(optionnel)'}
+            </label>
+            <input
+              type="file"
+              accept="image/png,image/jpeg"
+              onChange={e => setPhoto(e.target.files[0] || null)}
+              className="block w-full text-sm text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 file:cursor-pointer"
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <button type="submit" disabled={saving} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg text-sm font-medium cursor-pointer">
+              {saving ? 'Enregistrement' : editingId ? 'Enregistrer' : 'Ajouter'}
+            </button>
+            <button type="button" onClick={() => { resetForm(); setSub('list'); }} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium cursor-pointer">
+              Annuler
+            </button>
+          </div>
+        </form>
+      )}
+
+      {sub === 'import' && (
+        <div className="max-w-3xl space-y-4">
+          <Card>
+            <p className="text-sm text-slate-700 mb-1 font-medium">1. Télécharger le modèle</p>
+            <p className="text-xs text-slate-500 mb-4">
+              Huit colonnes : matricule, nom, prénom, sexe, date de naissance, lieu, nationalité, contact parent.
+            </p>
+            <button onClick={downloadTemplate} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 rounded-lg text-sm font-medium cursor-pointer">
+              <Download className="w-4 h-4" />
+              Template Excel
+            </button>
+          </Card>
+
+          <Card>
+            <p className="text-sm text-slate-700 mb-4 font-medium">2. Charger le fichier rempli</p>
+            <input
+              ref={excelInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleExcelChange}
+              className="block w-full text-sm text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 file:cursor-pointer"
+            />
+            {excelFile && (
+              <>
+                <p className="text-xs text-slate-500 mt-2">Fichier sélectionné : {excelFile.name}</p>
+                <div className="flex gap-2 mt-4">
+                  <button onClick={validateExcel} disabled={busy} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg text-sm font-medium cursor-pointer">
+                    {busy ? 'Vérification' : 'Vérifier le fichier'}
+                  </button>
+                  <button type="button" onClick={cancelImport} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium cursor-pointer">
+                    Annuler
+                  </button>
+                </div>
+              </>
+            )}
+          </Card>
+
+          {validation && (
+            <Card>
+              <p className="text-sm text-slate-700 mb-3 font-medium">3. Importer</p>
+              <p className="text-sm text-slate-600 mb-3">
+                {validation.totalRows} ligne(s) valide(s){validation.errors?.length ? `, ${validation.errors.length} erreur(s)` : ''}
+              </p>
+              {validation.errors?.length > 0 && (
+                <ul className="mb-4 max-h-40 overflow-y-auto text-xs text-rose-600 space-y-1">
+                  {validation.errors.map((e, i) => <li key={i}>{e}</li>)}
+                </ul>
+              )}
+              <div className="flex gap-2">
+                <button onClick={runImport} disabled={busy || !validation.data?.length} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg text-sm font-medium cursor-pointer">
+                  <Upload className="w-4 h-4" />
+                  {busy ? 'Import en cours' : `Importer ${validation.data?.length || 0} élève(s)`}
+                </button>
+                <button type="button" onClick={cancelImport} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium cursor-pointer">
+                  Annuler
+                </button>
+              </div>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {sub === 'photos' && (
+        <div className="max-w-3xl space-y-4">
+          <Card>
+            <p className="text-sm text-slate-700 mb-1 font-medium">Nommer les fichiers</p>
+            <p className="text-xs text-slate-500 mb-4">
+              Chaque photo doit porter le matricule de l'élève comme nom de fichier : MAT001.jpg, MAT002.jpg.
+              L'association est automatique. Sélectionnez le dossier entier d'un coup.
+            </p>
+            <input
+              type="file"
+              multiple
+              accept="image/png,image/jpeg"
+              onChange={e => setPhotoFiles(Array.from(e.target.files))}
+              className="block w-full text-sm text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 file:cursor-pointer"
+            />
+          </Card>
+
+          {photoFiles.length > 0 && (
+            <Card>
+              <p className="text-sm text-slate-700 mb-3 font-medium">{photoFiles.length} fichier(s) sélectionné(s)</p>
+              {progress > 0 && (
+                <div className="mb-4">
+                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-emerald-500 transition-all" style={{ width: `${progress}%` }} />
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">{progress}%</p>
+                </div>
+              )}
+              <button onClick={uploadPhotos} disabled={busy} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg text-sm font-medium cursor-pointer">
+                <Upload className="w-4 h-4" />
+                {busy ? 'Envoi en cours' : 'Associer les photos'}
+              </button>
+            </Card>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Input({ label, value, onChange, type = 'text', placeholder, required, disabled }) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-slate-600 mb-1.5">{label}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        required={required}
+        disabled={disabled}
+        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:text-slate-400"
+      />
+    </div>
+  );
+}
+
+function Card({ children }) {
+  return <div className="bg-white border border-slate-200 rounded-xl p-5">{children}</div>;
+}
+
+/* ---- Brouillon (liste) ---- */
+
+function BrouillonSection({ cls, students, collegeInfo, onRefresh }) {
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [editingStudent, setEditingStudent] = useState(null);
+  const [editData, setEditData] = useState({});
+  const [generating, setGenerating] = useState(false);
+
+  const flash = (msg) => { setNotice(msg); setTimeout(() => setNotice(''), 4000); };
+
+  const startEdit = (s) => {
+    setEditingStudent(s.id);
+    setEditData({
+      nom: s.nom, prenom: s.prenom, sexe: s.sexe, date_naissance: s.date_naissance || '',
+      lieu_naissance: s.lieu_naissance || '', nationalite: s.nationalite || '', adresse: s.adresse || '',
+    });
+  };
+
+  const saveEdit = async () => {
+    try {
+      await studentAPI.update(editingStudent, editData);
+      setEditingStudent(null);
+      await onRefresh();
+      flash('Élève mis à jour');
+    } catch {
+      setError('Erreur lors de la sauvegarde');
+    }
+  };
+
+  const changePhoto = async (studentId, file) => {
+    if (!file) return;
+    try {
+      await studentAPI.updatePhoto(studentId, file);
+      await onRefresh();
+      flash('Photo mise à jour');
+    } catch {
+      setError('Erreur lors de la mise à jour de la photo');
+    }
+  };
+
+  const exportPDF = async () => {
+    setError('');
+    setGenerating(true);
+    try {
+      await generateBrouillonPDF(students, cls, collegeInfo);
+      flash('PDF généré et téléchargé');
+    } catch {
+      setError('Erreur lors de la génération du PDF');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm text-slate-500">{students.length} élève{students.length > 1 ? 's' : ''}</p>
         <button
-          onClick={() => navigate(`/classes/${cls.id}/students`)}
-          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium cursor-pointer"
+          onClick={exportPDF}
+          disabled={generating || !students.length}
+          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg text-sm font-medium cursor-pointer"
         >
-          Importer / gérer les élèves
-        </button>
-        <button
-          onClick={() => navigate(`/classes/${cls.id}/brouillon`)}
-          className="px-4 py-2 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 rounded-lg text-sm font-medium cursor-pointer"
-        >
-          Brouillon
-        </button>
-        <button
-          onClick={() => navigate(`/classes/${cls.id}/cartes`)}
-          className="px-4 py-2 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 rounded-lg text-sm font-medium cursor-pointer"
-        >
-          Cartes finales
+          <Download className="w-4 h-4" />
+          {generating ? 'Génération' : 'Exporter PDF (A4 paysage)'}
         </button>
       </div>
+
+      {error && <Notice onClose={() => setError('')}>{error}</Notice>}
+      {notice && <Notice type="success">{notice}</Notice>}
 
       {!students.length ? (
         <Panel><p className="text-sm text-slate-500">Aucun élève dans cette classe.</p></Panel>
       ) : (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr className="text-left text-xs font-medium text-slate-500">
-                <th className="px-4 py-3">Matricule</th>
-                <th className="px-4 py-3">Nom</th>
-                <th className="px-4 py-3">Prénom</th>
-                <th className="px-4 py-3">Sexe</th>
-                <th className="px-4 py-3">Naissance</th>
-                <th className="px-4 py-3">Photo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {students.map(s => (
-                <tr key={s.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
-                  <td className="px-4 py-3 font-medium text-slate-800">{s.matricule}</td>
-                  <td className="px-4 py-3 text-slate-700">{s.nom}</td>
-                  <td className="px-4 py-3 text-slate-700">{s.prenom}</td>
-                  <td className="px-4 py-3 text-slate-600">{s.sexe}</td>
-                  <td className="px-4 py-3 text-slate-600">{s.date_naissance}</td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded ${
-                      s.photo_path ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
-                    }`}>
-                      {s.photo_path ? 'OK' : 'Manquante'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100">
+          {students.map(s => (
+            <div key={s.id} className="flex items-center gap-4 p-4">
+              <label className="w-14 h-14 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 overflow-hidden cursor-pointer relative group">
+                {s.photo_path ? (
+                  <img src={photoUrl(s.photo_path)} alt={s.nom} className="w-full h-full object-cover" />
+                ) : (
+                  <ImageIcon className="w-5 h-5 text-slate-300" />
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={e => changePhoto(s.id, e.target.files[0])}
+                  className="hidden"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition flex items-center justify-center">
+                  <span className="text-[10px] text-white opacity-0 group-hover:opacity-100">Changer</span>
+                </div>
+              </label>
+
+              <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 text-sm">
+                <div><span className="text-xs text-slate-400">Matricule</span><div className="text-slate-800 font-medium">{s.matricule}</div></div>
+                <div><span className="text-xs text-slate-400">Nom</span><div className="text-slate-700">{s.nom}</div></div>
+                <div><span className="text-xs text-slate-400">Prénom</span><div className="text-slate-700">{s.prenom}</div></div>
+                <div><span className="text-xs text-slate-400">Sexe</span><div className="text-slate-700">{s.sexe}</div></div>
+                <div><span className="text-xs text-slate-400">Date et lieu de naissance</span><div className="text-slate-700">{s.date_naissance || '—'} {s.lieu_naissance ? `· ${s.lieu_naissance}` : ''}</div></div>
+                <div><span className="text-xs text-slate-400">Nationalité</span><div className="text-slate-700">{s.nationalite || '—'}</div></div>
+                <div className="col-span-2"><span className="text-xs text-slate-400">Contact parent</span><div className="text-slate-700">{s.adresse || '—'}</div></div>
+              </div>
+
+              <button
+                onClick={() => startEdit(s)}
+                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md cursor-pointer shrink-0"
+                title="Modifier"
+              >
+                <Pencil className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {editingStudent && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl p-6 max-w-lg w-full">
+            <h3 className="text-sm font-semibold text-slate-800 mb-4">Modifier l'élève</h3>
+            <div className="grid grid-cols-2 gap-3 mb-5">
+              <Input label="Nom" value={editData.nom} onChange={v => setEditData({ ...editData, nom: v })} />
+              <Input label="Prénom" value={editData.prenom} onChange={v => setEditData({ ...editData, prenom: v })} />
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1.5">Sexe</label>
+                <select value={editData.sexe} onChange={e => setEditData({ ...editData, sexe: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm cursor-pointer">
+                  <option value="M">M</option>
+                  <option value="F">F</option>
+                </select>
+              </div>
+              <Input label="Date de naissance" type="date" value={editData.date_naissance} onChange={v => setEditData({ ...editData, date_naissance: v })} />
+              <Input label="Lieu de naissance" value={editData.lieu_naissance} onChange={v => setEditData({ ...editData, lieu_naissance: v })} />
+              <Input label="Nationalité" value={editData.nationalite} onChange={v => setEditData({ ...editData, nationalite: v })} />
+              <div className="col-span-2">
+                <Input label="Contact parent" value={editData.adresse} onChange={v => setEditData({ ...editData, adresse: v })} />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={saveEdit} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium cursor-pointer">
+                Enregistrer
+              </button>
+              <button onClick={() => setEditingStudent(null)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium cursor-pointer">
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================================
+   CARTES FINALES
+   ========================================================================== */
+
+/* --- Aperçu HTML : reproduit fidèlement le rendu PDF --- */
+
+const PREVIEW_W = 342;                      // largeur d'aperçu en px
+const BASE_PT = 242.6;                      // largeur de référence du design (pt)
+const S = PREVIEW_W / BASE_PT;              // facteur d'échelle
+const u = (n) => n * S;
+const PREVIEW_H = PREVIEW_W * (53.98 / 85.6);
+
+const formatSexe = (s) => {
+  const v = (s || '').toString().trim().toUpperCase();
+  if (v === 'F' || v.startsWith('FEM')) return 'Féminin';
+  if (v === 'M' || v.startsWith('MAS')) return 'Masculin';
+  return s || '';
+};
+
+function Tricolor({ left, top, width, height }) {
+  const seg = width / 3;
+  return (
+    <div style={{ position: 'absolute', left, top, width, height, display: 'flex' }}>
+      <div style={{ width: seg, background: '#00873E' }} />
+      <div style={{ width: seg, background: '#FCD900' }} />
+      <div style={{ width: seg, background: '#E31C24' }} />
+    </div>
+  );
+}
+
+function RectoPreview({ student, cls, college, year }) {
+  const logoW = u(104);
+  const logoH = logoW * 0.214;
+  const titleTop = u(5) + logoH + u(6);
+  const photoTop = titleTop + u(16);
+  const photoW = u(52);
+  const photoH = u(62);
+  const infoLeft = u(8) + photoW + u(9);
+  const rowH = u(8.5);
+  const fs = u(6.5);
+
+  const rows = [
+    ['Nom :', student?.nom || ''],
+    ['Prénom(s) :', student?.prenom || ''],
+    ['Né(e) le :', `${student?.date_naissance || ''}${student?.lieu_naissance ? `   à   ${student.lieu_naissance}` : ''}`],
+    ['Sexe :', formatSexe(student?.sexe)],
+    ['Nationalité :', student?.nationalite || ''],
+    ['Adresse :', student?.adresse || ''],
+    ['Classe :', cls?.code || ''],
+  ];
+
+  const sigW = u(64);
+  const sigH = u(22);
+
+  return (
+    <div
+      style={{
+        position: 'relative', width: PREVIEW_W, height: PREVIEW_H,
+        background: '#fff', border: '1px solid #cbd5e1', overflow: 'hidden',
+        fontFamily: 'Arial, Helvetica, sans-serif', color: '#000',
+      }}
+    >
+      <img src="/logo.png" alt="" style={{ position: 'absolute', left: u(5), top: u(5), width: logoW }} />
+
+      <div style={{
+        position: 'absolute', left: u(5) + logoW + u(4), top: u(4),
+        width: PREVIEW_W - (u(5) + logoW + u(4)) - u(5),
+        textAlign: 'center', lineHeight: 1.15,
+      }}>
+        <div style={{ fontSize: u(7), fontWeight: 700 }}>{(college?.nom || '').toUpperCase()}</div>
+        {college?.telephone && <div style={{ fontSize: u(5.5), marginTop: u(2) }}>Tel : {college.telephone}</div>}
+        <div style={{ fontSize: u(5.5) }}>
+          {[college?.commune, college?.departement].filter(Boolean).join(' - ')}
+        </div>
+      </div>
+
+      <div style={{
+        position: 'absolute', left: 0, top: titleTop, width: PREVIEW_W,
+        textAlign: 'center', fontSize: u(9), fontWeight: 700, letterSpacing: 0.2,
+      }}>
+        CARTE D'IDENTITE SCOLAIRE&nbsp;&nbsp;&nbsp;{year}
+      </div>
+
+      <div style={{
+        position: 'absolute', left: u(8), top: photoTop,
+        width: photoW, height: photoH, background: '#141414', overflow: 'hidden',
+      }}>
+        {student?.photo_path && (
+          <img src={photoUrl(student.photo_path)} alt=""
+            style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+        )}
+      </div>
+      <div style={{
+        position: 'absolute', left: u(8), top: photoTop + photoH + u(3),
+        width: photoW, textAlign: 'center', fontSize: u(7), fontWeight: 700,
+      }}>
+        Mle : {student?.matricule || ''}
+      </div>
+
+      <div style={{ position: 'absolute', left: infoLeft, top: photoTop - u(3), right: u(5) }}>
+        {rows.map(([label, value]) => (
+          <div key={label} style={{ height: rowH, fontSize: fs, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+            <span style={{ textDecoration: 'underline' }}>{label}</span>
+            <span style={{ fontWeight: 700, marginLeft: u(6) }}>{value}</span>
+          </div>
+        ))}
+      </div>
+
+      <Tricolor left={infoLeft} top={PREVIEW_H - u(8) - u(4.5)} width={u(85)} height={u(4.5)} />
+
+      <div style={{
+        position: 'absolute', right: u(5), top: PREVIEW_H - u(15) - sigH,
+        width: sigW, height: sigH, border: '1px solid #333',
+      }} />
+      <div style={{
+        position: 'absolute', right: u(5), top: PREVIEW_H - u(13),
+        width: sigW, textAlign: 'center', fontSize: u(4.2), fontStyle: 'italic', color: '#737373',
+      }}>
+        Signature de l'apprenant
+      </div>
+    </div>
+  );
+}
+
+function VersoPreview({ college, year, qrDataUrl }) {
+  const rightX = PREVIEW_W * 0.42;
+  const rightW = PREVIEW_W * 0.58 - u(6);
+  const sigBoxW = u(70);
+  const sigX = rightX + (rightW - sigBoxW) / 2;
+  const sigTop = u(64);
+  const sigBoxH = u(24);
+  const qrSize = u(38);
+
+  return (
+    <div
+      style={{
+        position: 'relative', width: PREVIEW_W, height: PREVIEW_H,
+        background: '#fff', border: '1px solid #cbd5e1', overflow: 'hidden',
+        fontFamily: 'Arial, Helvetica, sans-serif', color: '#000',
+      }}
+    >
+      <div style={{ position: 'absolute', right: u(6), top: u(4), textAlign: 'right', color: '#DCE0DE' }}>
+        <div style={{ fontSize: u(9), fontWeight: 700 }}>FVS</div>
+        <div style={{ fontSize: u(3.8), fontStyle: 'italic' }}>Réalisé par FVS</div>
+      </div>
+
+      <div style={{ position: 'absolute', left: 0, top: u(13), width: PREVIEW_W, textAlign: 'center' }}>
+        <div style={{ fontSize: u(8), fontWeight: 700 }}>{(college?.nom || '').toUpperCase()}</div>
+        {college?.telephone && (
+          <div style={{ fontSize: u(6.5), fontWeight: 700, color: '#E31C24', marginTop: u(4) }}>
+            TEL : {college.telephone}
+          </div>
+        )}
+        <div style={{ fontSize: u(6.5), fontWeight: 700, marginTop: u(4) }}>
+          CARTE D'IDENTITE SCOLAIRE : {year}
+        </div>
+      </div>
+
+      <div style={{
+        position: 'absolute', left: rightX, top: sigTop - u(10), width: rightW,
+        textAlign: 'center', fontSize: u(6), fontWeight: 700,
+      }}>
+        LE DIRECTEUR
+      </div>
+
+      <div style={{
+        position: 'absolute', left: sigX, top: sigTop, width: sigBoxW, height: sigBoxH,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        {college?.signature_path ? (
+          <img src={signatureUrl(college.signature_path)} alt=""
+            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+        ) : (
+          <span style={{ fontSize: u(6), fontStyle: 'italic', color: '#E31C24' }}>
+            {college?.directeur_nom || ''}
+          </span>
+        )}
+      </div>
+
+      <Tricolor left={sigX} top={sigTop + sigBoxH + u(2)} width={sigBoxW} height={u(4.5)} />
+
+      <div style={{
+        position: 'absolute', left: u(14), top: (PREVIEW_H - qrSize) / 2 + u(6),
+        width: qrSize, height: qrSize, border: qrDataUrl ? 'none' : '1px solid #000',
+      }}>
+        {qrDataUrl && <img src={qrDataUrl} alt="QR" style={{ width: '100%', height: '100%' }} />}
+      </div>
+    </div>
+  );
+}
+
+/* --- Section --- */
+
+function CartesSection({ cls, students, collegeInfo }) {
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [busy, setBusy] = useState('');
+  const [showSettings, setShowSettings] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState(null);
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState([]);
+
+  const [cardW, setCardW] = useState(DEFAULT_CARD_MM.width);
+  const [cardH, setCardH] = useState(DEFAULT_CARD_MM.height);
+  const [includeVerso, setIncludeVerso] = useState(true);
+  const [cropMarks, setCropMarks] = useState(true);
+
+  const year = getSchoolYear();
+  const flash = (msg) => { setNotice(msg); setTimeout(() => setNotice(''), 4000); };
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const QRCode = (await import('qrcode')).default;
+        const { buildQrPayload } = await import('../utils/pdfUtils');
+        const url = await QRCode.toDataURL(buildQrPayload(collegeInfo), { margin: 0, width: 300 });
+        if (alive) setQrDataUrl(url);
+      } catch {
+        if (alive) setQrDataUrl(null);
+      }
+    })();
+    return () => { alive = false; };
+  }, [collegeInfo]);
+
+  const visibles = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return students;
+    return students.filter(s =>
+      [s.matricule, s.nom, s.prenom].some(v => (v || '').toLowerCase().includes(q))
+    );
+  }, [students, search]);
+
+  const target = selected.length
+    ? students.filter(s => selected.includes(s.id))
+    : students;
+
+  const opts = {
+    cardWidthMm: Number(cardW) || DEFAULT_CARD_MM.width,
+    cardHeightMm: Number(cardH) || DEFAULT_CARD_MM.height,
+    includeVerso,
+    cropMarks,
+  };
+
+  const run = async (key, fn, okMsg) => {
+    setError('');
+    setBusy(key);
+    try {
+      await fn();
+      if (okMsg) flash(okMsg);
+    } catch (e) {
+      console.error(e);
+      setError("Erreur lors de l'opération. Vérifiez que /logo.png existe dans le dossier public.");
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const toggle = (id) =>
+    setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
+  const avecPhoto = students.filter(s => s.photo_path).length;
+  const pages = Math.ceil(target.length / 8) || 0;
+
+  return (
+    <div>
+      {error && <Notice onClose={() => setError('')}>{error}</Notice>}
+      {notice && <Notice type="success">{notice}</Notice>}
+
+      {/* Barre d'actions */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 mb-5">
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          <div className="text-sm text-slate-700 mr-auto">
+            <span className="font-medium">{target.length}</span> carte{target.length > 1 ? 's' : ''} à produire
+            {selected.length > 0 && <span className="text-emerald-700"> (sélection)</span>}
+            <span className="text-slate-400"> · {pages} page{pages > 1 ? 's' : ''} A4 · année {year}</span>
+          </div>
+          <button
+            onClick={() => setShowSettings(v => !v)}
+            className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 rounded-lg text-sm font-medium cursor-pointer"
+          >
+            <Settings2 className="w-4 h-4" />
+            Format
+          </button>
+        </div>
+
+        {showSettings && (
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-5 p-4 bg-slate-50 border border-slate-200 rounded-lg">
+            <Input label="Largeur carte (mm)" type="number" value={cardW} onChange={setCardW} />
+            <Input label="Hauteur carte (mm)" type="number" value={cardH} onChange={setCardH} />
+            <div className="flex flex-col justify-end gap-2 text-sm text-slate-700">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={includeVerso} onChange={e => setIncludeVerso(e.target.checked)} />
+                Inclure le verso
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={cropMarks} onChange={e => setCropMarks(e.target.checked)} />
+                Repères de découpe
+              </label>
+            </div>
+            <div className="flex items-end">
+              <button
+                onClick={() => { setCardW(DEFAULT_CARD_MM.width); setCardH(DEFAULT_CARD_MM.height); }}
+                className="px-3 py-2 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 rounded-lg text-xs font-medium cursor-pointer"
+              >
+                Réinitialiser (ISO ID-1)
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <button
+            onClick={() => run('a4', () => generateFinalCardsPDF(target, cls, collegeInfo, { ...opts, layout: 'a4' }), 'PDF A4 généré')}
+            disabled={!!busy || !target.length}
+            className="flex items-center justify-center gap-2 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg text-sm font-medium cursor-pointer"
+          >
+            {busy === 'a4' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            Exporter PDF — 8 cartes / page
+          </button>
+
+          <button
+            onClick={() => run('pvc', () => generateFinalCardsPDF(target, cls, collegeInfo, { ...opts, layout: 'pvc' }), 'PDF format carte généré')}
+            disabled={!!busy || !target.length}
+            className="flex items-center justify-center gap-2 py-2.5 bg-white border border-slate-200 hover:border-slate-300 disabled:opacity-50 text-slate-700 rounded-lg text-sm font-medium cursor-pointer"
+          >
+            {busy === 'pvc' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
+            Exporter PDF — 1 carte / page
+          </button>
+
+          <button
+            onClick={() => run('print', () => printFinalCards(target, cls, collegeInfo, { ...opts, layout: 'pvc' }))}
+            disabled={!!busy || !target.length}
+            className="flex items-center justify-center gap-2 py-2.5 bg-slate-800 hover:bg-slate-900 disabled:bg-slate-300 text-white rounded-lg text-sm font-medium cursor-pointer"
+          >
+            {busy === 'print' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+            Imprimer (PVC)
+          </button>
+        </div>
+
+        <p className="text-xs text-slate-400 mt-3">
+          L'impression ouvre la boîte de dialogue du système : choisissez l'imprimante PVC, le format
+          ({opts.cardWidthMm} × {opts.cardHeightMm} mm) et le recto/verso.
+        </p>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-3 mb-5">
+        <div className="bg-white border border-slate-200 rounded-xl p-4 text-center">
+          <div className="text-xl font-semibold text-slate-800">{students.length}</div>
+          <div className="text-xs text-slate-500 mt-1">Élèves</div>
+        </div>
+        <div className="bg-white border border-slate-200 rounded-xl p-4 text-center">
+          <div className="text-xl font-semibold text-emerald-600">{avecPhoto}</div>
+          <div className="text-xs text-slate-500 mt-1">Avec photo</div>
+        </div>
+        <div className="bg-white border border-slate-200 rounded-xl p-4 text-center">
+          <div className="text-xl font-semibold text-rose-500">{students.length - avecPhoto}</div>
+          <div className="text-xs text-slate-500 mt-1">Sans photo</div>
+        </div>
+      </div>
+
+      {/* Verso commun */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 mb-5">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <p className="text-sm font-medium text-slate-800">Verso commun</p>
+            <p className="text-xs text-slate-500">Identique sur toutes les cartes de cet établissement.</p>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <VersoPreview college={collegeInfo} year={year} qrDataUrl={qrDataUrl} />
+        </div>
+      </div>
+
+      {/* Aperçu des rectos */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <p className="text-sm font-medium text-slate-800 mr-auto">Aperçu des rectos</p>
+        <div className="relative">
+          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Matricule, nom, prénom"
+            className="w-56 pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+        </div>
+        {selected.length > 0 && (
+          <button
+            onClick={() => setSelected([])}
+            className="px-3 py-2 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 rounded-lg text-xs font-medium cursor-pointer"
+          >
+            Annuler la sélection ({selected.length})
+          </button>
+        )}
+      </div>
+
+      {!visibles.length ? (
+        <Panel><p className="text-sm text-slate-500">Aucun élève à afficher.</p></Panel>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
+          {visibles.map(s => {
+            const on = selected.includes(s.id);
+            return (
+              <div key={s.id} className={`bg-white border rounded-xl p-3 transition ${on ? 'border-emerald-400' : 'border-slate-200'}`}>
+                <div className="overflow-x-auto">
+                  <RectoPreview student={s} cls={cls} college={collegeInfo} year={year} />
+                </div>
+                <div className="flex items-center gap-2 mt-3">
+                  <label className="flex items-center gap-2 text-xs text-slate-600 mr-auto cursor-pointer">
+                    <input type="checkbox" checked={on} onChange={() => toggle(s.id)} />
+                    Sélectionner
+                  </label>
+                  <button
+                    onClick={() => run(`one-${s.id}`, () => generateSingleCardPDF(s, cls, collegeInfo, opts))}
+                    disabled={!!busy}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-slate-300 disabled:opacity-50 text-slate-700 rounded-md text-xs font-medium cursor-pointer"
+                    title="Exporter cette carte en PDF"
+                  >
+                    <FileDown className="w-3.5 h-3.5" />
+                    PDF
+                  </button>
+                  <button
+                    onClick={() => run(`png-${s.id}`, () => generateCardImages([s], cls, collegeInfo, opts))}
+                    disabled={!!busy}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-slate-300 disabled:opacity-50 text-slate-700 rounded-md text-xs font-medium cursor-pointer"
+                    title="Exporter cette carte en PNG 300 DPI"
+                  >
+                    <ImageIcon className="w-3.5 h-3.5" />
+                    PNG
+                  </button>
+                  <button
+                    onClick={() => run(`p-${s.id}`, () => printFinalCards([s], cls, collegeInfo, { ...opts, layout: 'pvc' }))}
+                    disabled={!!busy}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white rounded-md text-xs font-medium cursor-pointer"
+                    title="Imprimer cette carte"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

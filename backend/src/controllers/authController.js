@@ -129,7 +129,29 @@ export const register = async (req, res) => {
     res.status(500).json({ error: 'Erreur lors de l\'enregistrement' });
   }
 };
+export const resendOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: 'Email requis' });
+    }
 
+    const user = await User.findByEmail(email);
+    if (!user) {
+      return res.status(404).json({ error: 'Utilisateur non trouvé' });
+    }
+
+    const otpCode = generateOTP();
+    await saveOTP(email, otpCode);
+    await sendOtpEmail(email, otpCode);
+
+    logger.info(`OTP resent to ${email}`);
+    res.json({ message: 'Nouveau code envoyé', email });
+  } catch (error) {
+    logger.error(`Resend OTP error: ${error.message}`);
+    res.status(500).json({ error: "Erreur lors de l'envoi du code" });
+  }
+};
 export const verifyToken = (req, res) => {
   try {
     const user = req.user;

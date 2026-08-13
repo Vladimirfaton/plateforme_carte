@@ -23,11 +23,19 @@ export class College {
     return result.rows[0];
   }
 
-  static async findAll() {
-    const result = await query(`SELECT * FROM colleges ORDER BY nom ASC`);
+static async findAll() {
+    const result = await query(
+      `SELECT co.*,
+              COUNT(DISTINCT e.id)::int AS students_count,
+              0 AS cards_generated
+       FROM colleges co
+       LEFT JOIN classes cl ON cl.college_id = co.id
+       LEFT JOIN eleves e ON e.classe_id = cl.id
+       GROUP BY co.id
+       ORDER BY co.created_at ASC`,
+    );
     return result.rows;
   }
-
   static async findById(id) {
     const result = await query('SELECT * FROM colleges WHERE id = $1', [id]);
     return result.rows[0];

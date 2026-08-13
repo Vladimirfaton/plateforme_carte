@@ -1,503 +1,910 @@
-import { PDFDocument, rgb, degrees } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import QRCode from 'qrcode';
-
-const API_URL = import.meta.env.VITE_API_URL;
+import { FILE_BASE_URL } from '../services/api';
 
 // ============================================================================
-// BROUILLON EXPORT (6 cartes par page A4 paysage, modifiable)
+// CONSTANTES
 // ============================================================================
 
-export const generateBrouillonPDF = async (students, classInfo, collegeInfo) => {
+const MM = 2.834645669; // 1 mm en points PDF
+
+export const DEFAULT_CARD_MM = { width: 85.6, height: 53.98 };
+
+const BASE_W = 242.6;  // largeur de référence du design (ISO ID-1 en pt)
+const BASE_H = 153.07;
+
+const GREEN = rgb(0.0, 0.53, 0.29);
+const YELLOW = rgb(0.99, 0.85, 0.0);
+const RED = rgb(0.89, 0.11, 0.14);
+const BLACK = rgb(0, 0, 0);
+const GREY = rgb(0.45, 0.45, 0.45);
+const LIGHT = rgb(0.85, 0.85, 0.85);
+
+export const getSchoolYear = (date = new Date()) => {
+  const y = date.getFullYear();
+  return date.getMonth() + 1 >= 9 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+};
+
+// ============================================================================
+// RESSOURCES (photos, logo, signature, QR)
+// ============================================================================
+
+const photoFileUrl = (photoPath) =>
+  photoPath ? `${FILE_BASE_URL}/uploads/photos/${photoPath.split(/[\\/]/).pop()}` : null;
+
+const signatureFileUrl = (signaturePath) =>
+  signaturePath ? `${FILE_BASE_URL}/uploads/signatures/${signaturePath.split(/[\\/]/).pop()}` : null;
+
+const embedFromUrl = async (pdfDoc, url) => {
+  if (!url) return null;
   try {
-    // Create PDF in landscape A4
-    const pdfDoc = PDFDocument.create();
-    const page = pdfDoc.addPage([841.89, 595.28]); // A4 landscape (mm converted to points)
-    const { width, height } = page.getSize();
-
-    const CARDS_PER_PAGE = 6;
-    const COLS = 2;
-    const ROWS = 3;
-    const MARGIN = 20;
-    const CARD_WIDTH = (width - MARGIN * 3) / COLS;
-    const CARD_HEIGHT = (height - MARGIN * 3) / ROWS;
-
-    // Draw cards
-    students.slice(0, 6).forEach((student, idx) => {
-      const row = Math.floor(idx / COLS);
-      const col = idx % COLS;
-      const x = MARGIN + col * (CARD_WIDTH + MARGIN);
-      const y = MARGIN + row * (CARD_HEIGHT + MARGIN);
-
-      drawBrouillonCard(page, student, classInfo, collegeInfo, x, y, CARD_WIDTH, CARD_HEIGHT);
-    });
-
-    // Save PDF
-    const pdfBytes = await pdfDoc.save();
-    downloadFile(pdfBytes, `brouillon_${classInfo?.code || 'cartes'}.pdf`);
-  } catch (error) {
-    console.error('Error generating brouillon PDF:', error);
-    throw error;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const bytes = await res.arrayBuffer();
+    try {
+      return await pdfDoc.embedPng(bytes);
+    } catch {
+      return await pdfDoc.embedJpg(bytes);
+    }
+  } catch {
+    return null;
   }
 };
 
-const drawBrouillonCard = (page, student, classInfo, collegeInfo, x, y, width, height) => {
-  const { rgb: rgbColor } = require('pdf-lib');
+const embedStudentPhoto = (pdfDoc, photoPath) => embedFromUrl(pdfDoc, photoFileUrl(photoPath));
+const embedSignature = (pdfDoc, signaturePath) => embedFromUrl(pdfDoc, signatureFileUrl(signaturePath));
+const embedLogo = (pdfDoc) => embedFromUrl(pdfDoc, '/logo.png');
 
-  // Card border
-  page.drawRectangle({
-    x,
-    y,
-    width,
-    height,
-    borderColor: rgb(0.8, 0.9, 1),
-    borderWidth: 2
+export const buildQrPayload = (collegeInfo) =>
+  [
+    collegeInfo?.nom || 'Etablissement',
+    collegeInfo?.telephone ? `Tel: ${collegeInfo.telephone}` : null,
+    collegeInfo?.email ? `Email: ${collegeInfo.email}` : null,
+    [collegeInfo?.commune, collegeInfo?.departement].filter(Boolean).join(', ') || null,
+    'Realise par FVS',
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+const embedQr = async (pdfDoc, text) => {
+  try {
+    const dataUrl = await QRCode.toDataURL(text, { margin: 0, width: 400, errorCorrectionLevel: 'M' });
+    return await pdfDoc.embedPng(dataUrl);
+  } catch {
+    return null;
+  }
+};
+
+const fitContain = (imgW, imgH, boxW, boxH) => {
+  const scale = Math.min(boxW / imgW, boxH / imgH);
+  return { w: imgW * scale, h: imgH * scale };
+};
+
+const loadHtmlImage = (url) =>
+  new Promise((resolve) => {
+    if (!url) return resolve(null);
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = url;
   });
 
-  // Background
-  page.drawRectangle({
-    x: x + 1,
-    y: y + 1,
-    width: width - 2,
-    height: height - 2,
-    color: rgb(1, 1, 1)
-  });
+// ============================================================================
+// HELPERS TEXTE
+// ============================================================================
 
-  // Photo placeholder area
-  const photoWidth = width * 0.3;
-  const photoHeight = height * 0.8;
-  page.drawRectangle({
-    x: x + 5,
-    y: y + height - photoHeight - 5,
-    width: photoWidth,
-    height: photoHeight,
-    color: rgb(0.95, 0.95, 0.95),
-    borderColor: rgb(0.8, 0.8, 0.8),
-    borderWidth: 1
-  });
+// pdf-lib / Helvetica = WinAnsi : on neutralise les caracteres non encodables
+const sanitize = (v) =>
+  (v ?? '')
+    .toString()
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/\u2026/g, '...')
+    .replace(/[^\x20-\xFF]/g, '');
 
-  if (student.photo_path) {
-    try {
-      // Photo would need to be embedded - simplified here
-      page.drawText('📸', {
-        x: x + photoWidth / 2 - 5,
-        y: y + height - photoHeight / 2 - 5,
-        size: 12,
-        color: rgb(0.5, 0.5, 0.5)
-      });
-    } catch (err) {
-      // Photo embedding - skipped for simplicity
+const truncateText = (font, text, size, maxWidth) => {
+  const str = sanitize(text);
+  if (!str) return '';
+  if (font.widthOfTextAtSize(str, size) <= maxWidth) return str;
+  let cut = str;
+  while (cut.length > 1 && font.widthOfTextAtSize(cut + '...', size) > maxWidth) {
+    cut = cut.slice(0, -1);
+  }
+  return cut + '...';
+};
+
+const wrapText = (font, text, size, maxWidth, maxLines = 2) => {
+  const words = sanitize(text).split(/\s+/).filter(Boolean);
+  const lines = [];
+  let current = '';
+  for (const word of words) {
+    const test = current ? `${current} ${word}` : word;
+    if (font.widthOfTextAtSize(test, size) <= maxWidth || !current) {
+      current = test;
+    } else {
+      lines.push(current);
+      current = word;
+      if (lines.length === maxLines) break;
     }
+  }
+  if (lines.length < maxLines && current) lines.push(current);
+  if (lines.length > maxLines) lines.length = maxLines;
+  if (lines.length === maxLines) {
+    lines[maxLines - 1] = truncateText(font, lines[maxLines - 1], size, maxWidth);
+  }
+  return lines;
+};
+
+const drawCentered = (page, text, font, size, boxX, boxW, y, color = BLACK) => {
+  const str = truncateText(font, text, size, boxW);
+  if (!str) return;
+  const w = font.widthOfTextAtSize(str, size);
+  page.drawText(str, { x: boxX + (boxW - w) / 2, y, size, font, color });
+};
+
+const drawTricolor = (page, x, y, w, h) => {
+  const seg = w / 3;
+  page.drawRectangle({ x, y, width: seg, height: h, color: GREEN });
+  page.drawRectangle({ x: x + seg, y, width: seg, height: h, color: YELLOW });
+  page.drawRectangle({ x: x + seg * 2, y, width: seg, height: h, color: RED });
+};
+
+const formatSexe = (s) => {
+  const v = (s || '').toString().trim().toUpperCase();
+  if (v === 'F' || v.startsWith('FEM')) return 'Feminin';
+  if (v === 'M' || v.startsWith('MAS')) return 'Masculin';
+  return s || '';
+};
+
+// ============================================================================
+// RECTO
+// ============================================================================
+
+const drawRecto = (page, ox, oy, W, H, ctx) => {
+  const { student, classInfo, collegeInfo, logo, photo, font, bold, italic, year } = ctx;
+  const s = W / BASE_W;
+  const u = (n) => n * s;
+  const top = oy + H;
+  const P = u(5);
+
+  page.drawRectangle({
+    x: ox, y: oy, width: W, height: H,
+    color: rgb(1, 1, 1), borderColor: LIGHT, borderWidth: 0.5,
+  });
+
+  // ---- En-tete : logo ministere + bloc etablissement
+  const logoW = u(104);
+  const logoH = logo ? logoW * (logo.height / logo.width) : u(22);
+  if (logo) {
+    page.drawImage(logo, { x: ox + P, y: top - P - logoH, width: logoW, height: logoH });
+  }
+
+  const cbX = ox + P + logoW + u(4);
+  const cbW = W - (cbX - ox) - P;
+  let cy = top - P - u(7);
+
+  wrapText(bold, (collegeInfo?.nom || '').toUpperCase(), u(7), cbW, 2).forEach((line) => {
+    drawCentered(page, line, bold, u(7), cbX, cbW, cy);
+    cy -= u(8);
+  });
+  if (collegeInfo?.telephone) {
+    drawCentered(page, `Tel : ${collegeInfo.telephone}`, font, u(5.5), cbX, cbW, cy);
+    cy -= u(7);
+  }
+  const loc = [collegeInfo?.commune, collegeInfo?.departement].filter(Boolean).join(' - ');
+  if (loc) drawCentered(page, loc, font, u(5.5), cbX, cbW, cy);
+
+  // ---- Titre
+  const titleY = top - P - logoH - u(11);
+  drawCentered(page, `CARTE D'IDENTITE SCOLAIRE   ${year}`, bold, u(9), ox, W, titleY);
+
+  // ---- Photo + matricule
+  const photoX = ox + u(8);
+  const photoW = u(52);
+  const photoH = u(62);
+  const photoY = titleY - u(8) - photoH;
+
+  page.drawRectangle({
+    x: photoX, y: photoY, width: photoW, height: photoH,
+    color: rgb(0.08, 0.08, 0.08),
+  });
+  if (photo) {
+    const { w, h } = fitContain(photo.width, photo.height, photoW, photoH);
+    page.drawImage(photo, {
+      x: photoX + (photoW - w) / 2,
+      y: photoY + (photoH - h) / 2,
+      width: w, height: h,
+    });
+  }
+  drawCentered(page, `Mle : ${student?.matricule || ''}`, bold, u(7), photoX, photoW, photoY - u(9));
+
+  // ---- Colonne d'informations
+  const infoX = photoX + photoW + u(9);
+  const infoW = W - (infoX - ox) - P;
+  const labelSize = u(6.5);
+  const valueSize = u(6.5);
+  const lineH = u(8.5);
+
+  const rows = [
+    ['Nom :', student?.nom || ''],
+    ['Prenom(s) :', student?.prenom || ''],
+    ['Ne(e) le :', `${student?.date_naissance || ''}${student?.lieu_naissance ? `   a   ${student.lieu_naissance}` : ''}`],
+    ['Sexe :', formatSexe(student?.sexe)],
+    ['Nationalite :', student?.nationalite || ''],
+    ['Adresse :', student?.adresse || ''],
+    ['Classe :', classInfo?.code || ''],
+  ];
+
+  let ry = titleY - u(10);
+  rows.forEach(([label, value]) => {
+    const lw = font.widthOfTextAtSize(label, labelSize);
+    page.drawText(label, { x: infoX, y: ry, size: labelSize, font, color: BLACK });
+    page.drawLine({
+      start: { x: infoX, y: ry - u(1.6) },
+      end: { x: infoX + lw, y: ry - u(1.6) },
+      thickness: 0.4, color: BLACK,
+    });
+    const vx = infoX + lw + u(6);
+    page.drawText(truncateText(bold, value, valueSize, infoW - (vx - infoX)), {
+      x: vx, y: ry, size: valueSize, font: bold, color: BLACK,
+    });
+    ry -= lineH;
+  });
+
+  // ---- Bande tricolore
+  drawTricolor(page, infoX, oy + u(8), u(85), u(4.5));
+
+  // ---- Cadre signature de l'apprenant
+  const sigW = u(64);
+  const sigH = u(22);
+  const sigX = ox + W - P - sigW;
+  const sigY = oy + u(15);
+  page.drawRectangle({
+    x: sigX, y: sigY, width: sigW, height: sigH,
+    borderColor: rgb(0.2, 0.2, 0.2), borderWidth: 0.5,
+  });
+  drawCentered(page, "Signature de l'apprenant", italic, u(4.2), sigX, sigW, oy + u(9), GREY);
+};
+
+// ============================================================================
+// VERSO (identique pour toutes les cartes d'un etablissement)
+// ============================================================================
+
+const drawVerso = (page, ox, oy, W, H, ctx) => {
+  const { collegeInfo, qr, signature, font, bold, italic, year } = ctx;
+  const s = W / BASE_W;
+  const u = (n) => n * s;
+  const top = oy + H;
+  const P = u(6);
+
+  page.drawRectangle({
+    x: ox, y: oy, width: W, height: H,
+    color: rgb(1, 1, 1), borderColor: LIGHT, borderWidth: 0.5,
+  });
+
+  // ---- Filigrane FVS (haut droit)
+  page.drawText('FVS', {
+    x: ox + W - P - u(24), y: top - P - u(7),
+    size: u(9), font: bold, color: rgb(0.86, 0.88, 0.87),
+  });
+  page.drawText('Realise par FVS', {
+    x: ox + W - P - u(46), y: top - P - u(13),
+    size: u(3.8), font: italic, color: rgb(0.86, 0.88, 0.87),
+  });
+
+  // ---- Bloc central
+  let cy = top - u(20);
+  wrapText(bold, (collegeInfo?.nom || '').toUpperCase(), u(8), W - P * 2, 2).forEach((line) => {
+    drawCentered(page, line, bold, u(8), ox, W, cy);
+    cy -= u(10);
+  });
+
+  if (collegeInfo?.telephone) {
+    drawCentered(page, `TEL : ${collegeInfo.telephone}`, bold, u(6.5), ox, W, cy, RED);
+    cy -= u(11);
+  }
+
+  drawCentered(page, `CARTE D'IDENTITE SCOLAIRE : ${year}`, bold, u(6.5), ox, W, cy);
+  cy -= u(13);
+
+  // ---- Colonne directeur (moitie droite)
+  const rightX = ox + W * 0.42;
+  const rightW = W * 0.58 - P;
+
+  drawCentered(page, 'LE DIRECTEUR', bold, u(6), rightX, rightW, cy);
+
+  const sigTop = cy - u(6);
+  const sigBoxW = u(70);
+  const sigBoxH = u(24);
+  const sigX = rightX + (rightW - sigBoxW) / 2;
+  const sigY = sigTop - sigBoxH;
+
+  if (signature) {
+    const { w, h } = fitContain(signature.width, signature.height, sigBoxW, sigBoxH);
+    page.drawImage(signature, {
+      x: sigX + (sigBoxW - w) / 2,
+      y: sigY + (sigBoxH - h) / 2,
+      width: w, height: h,
+    });
+  } else if (collegeInfo?.directeur_nom) {
+    drawCentered(page, collegeInfo.directeur_nom, italic, u(6), sigX, sigBoxW, sigY + sigBoxH / 2, RED);
+  }
+
+  // ---- Bande tricolore sous la signature
+  drawTricolor(page, sigX, sigY - u(7), sigBoxW, u(4.5));
+
+  // ---- QR code (gauche)
+  const qrSize = u(38);
+  const qrX = ox + u(14);
+  const qrY = oy + (H - qrSize) / 2 - u(6);
+  if (qr) {
+    page.drawImage(qr, { x: qrX, y: qrY, width: qrSize, height: qrSize });
   } else {
-    page.drawText('No Photo', {
-      x: x + photoWidth / 2 - 25,
-      y: y + height - photoHeight / 2 - 5,
-      size: 8,
-      color: rgb(0.8, 0.8, 0.8)
+    page.drawRectangle({
+      x: qrX, y: qrY, width: qrSize, height: qrSize,
+      borderColor: BLACK, borderWidth: 0.5,
     });
   }
-
-  // Info section
-  const infoX = x + photoWidth + 10;
-  const infoWidth = width - photoWidth - 15;
-  let textY = y + height - 15;
-  const lineHeight = 12;
-
-  const fontSize = 8;
-  const infoLines = [
-    `MAT: ${student.matricule}`,
-    `NOM: ${student.nom}`,
-    `PRENOM: ${student.prenom}`,
-    `CLASSE: ${classInfo?.code || ''}`,
-    `DATE: ${student.date_naissance}`,
-    `LIEU: ${student.lieu_naissance || ''}`,
-    `NAT: ${student.nationalite || ''}`
-  ];
-
-  infoLines.forEach(line => {
-    page.drawText(line, {
-      x: infoX,
-      y: textY,
-      size: fontSize,
-      color: rgb(0, 0, 0),
-      maxWidth: infoWidth
-    });
-    textY -= lineHeight;
-  });
-
-  // Watermark
-  page.drawText('Brouillon FVS', {
-    x: x + width / 2 - 20,
-    y: y + 8,
-    size: 6,
-    color: rgb(0.9, 0.9, 0.9),
-    opacity: 0.5
-  });
 };
 
 // ============================================================================
-// FINAL CARDS EXPORT (Recto/Verso, 1012×638px, CMYK)
+// CONSTRUCTION DU PDF DES CARTES FINALES
 // ============================================================================
 
-export const generateFinalCardsPDF = async (students, classInfo, collegeInfo) => {
-  try {
-    const pdfDoc = PDFDocument.create();
+const A4 = { width: 595.28, height: 841.89 };
+const COLS = 2;
+const ROWS = 4;
 
-    // ISO ID-1 card dimensions in points (1 point = 1/72 inch)
-    // 85.6mm × 53.98mm = 242.6 × 153.07 points
-    const CARD_WIDTH = 242.6; // mm: 85.6
-    const CARD_HEIGHT = 153.07; // mm: 53.98
+/**
+ * options = {
+ *   cardWidthMm, cardHeightMm,   // dimensions de la carte
+ *   layout: 'a4' | 'pvc',        // 'a4' = 8 cartes/page, 'pvc' = 1 carte par page
+ *   includeVerso: bool,
+ *   cropMarks: bool              // reperes de decoupe (layout a4)
+ * }
+ */
+export const buildFinalCardsPdfBytes = async (students, classInfo, collegeInfo, options = {}) => {
+  const {
+    cardWidthMm = DEFAULT_CARD_MM.width,
+    cardHeightMm = DEFAULT_CARD_MM.height,
+    layout = 'a4',
+    includeVerso = true,
+    cropMarks = true,
+  } = options;
 
-    // Create pages for each student (2 pages per card if double-sided)
-    for (const student of students) {
-      // Recto
-      const rectoPage = pdfDoc.addPage([CARD_WIDTH, CARD_HEIGHT]);
-      await drawCardRecto(rectoPage, student, classInfo);
+  const CW = cardWidthMm * MM;
+  const CH = cardHeightMm * MM;
 
-      // Verso
-      const versoPage = pdfDoc.addPage([CARD_WIDTH, CARD_HEIGHT]);
-      await drawCardVerso(versoPage, student, collegeInfo);
-    }
+  const pdfDoc = await PDFDocument.create();
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const italic = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
 
-    const pdfBytes = await pdfDoc.save();
-    downloadFile(pdfBytes, `cartes_finales_${classInfo?.code || 'export'}.pdf`);
-  } catch (error) {
-    console.error('Error generating final cards PDF:', error);
-    throw error;
+  const year = getSchoolYear();
+  const logo = await embedLogo(pdfDoc);
+  const qr = await embedQr(pdfDoc, buildQrPayload(collegeInfo));
+  const signature = await embedSignature(pdfDoc, collegeInfo?.signature_path);
+
+  const photos = [];
+  for (const st of students) {
+    photos.push(await embedStudentPhoto(pdfDoc, st.photo_path));
   }
-};
 
-const drawCardRecto = async (page, student, classInfo) => {
-  const { width, height } = page.getSize();
-  const margin = 5;
+  const versoCtx = { collegeInfo, qr, signature, font, bold, italic, year };
 
-  // Background white
-  page.drawRectangle({
-    x: 0,
-    y: 0,
-    width,
-    height,
-    color: rgb(1, 1, 1)
-  });
-
-  // Left side: Photo placeholder
-  const photoWidth = width * 0.35;
-  page.drawRectangle({
-    x: margin,
-    y: margin,
-    width: photoWidth - margin * 2,
-    height: height - margin * 2,
-    color: rgb(0.95, 0.95, 0.95),
-    borderColor: rgb(0.8, 0.8, 0.8),
-    borderWidth: 0.5
-  });
-
-  if (student.photo_path) {
-    try {
-      page.drawText('📸', {
-        x: photoWidth / 2 - 5,
-        y: height / 2 - 5,
-        size: 16,
-        color: rgb(0.5, 0.5, 0.5)
+  // ---------- Mode PVC : une carte par page, format = taille de la carte
+  if (layout === 'pvc') {
+    students.forEach((student, i) => {
+      const recto = pdfDoc.addPage([CW, CH]);
+      drawRecto(recto, 0, 0, CW, CH, {
+        student, classInfo, collegeInfo, logo, photo: photos[i], font, bold, italic, year,
       });
-    } catch (err) {
-      // Photo embedding skipped
+      if (includeVerso) {
+        const verso = pdfDoc.addPage([CW, CH]);
+        drawVerso(verso, 0, 0, CW, CH, versoCtx);
+      }
+    });
+    return pdfDoc.save();
+  }
+
+  // ---------- Mode A4 : 8 cartes par page (2 colonnes x 4 lignes)
+  const perPage = COLS * ROWS;
+  const gapX = 14;
+  const gapY = 12;
+  const gridW = COLS * CW + (COLS - 1) * gapX;
+  const gridH = ROWS * CH + (ROWS - 1) * gapY;
+  const startX = (A4.width - gridW) / 2;
+  const startY = A4.height - (A4.height - gridH) / 2;
+
+  const slotPos = (index) => {
+    const r = Math.floor(index / COLS);
+    const c = index % COLS;
+    return {
+      x: startX + c * (CW + gapX),
+      y: startY - (r + 1) * CH - r * gapY,
+    };
+  };
+
+  const drawCropMarks = (page, x, y) => {
+    if (!cropMarks) return;
+    const m = 5;
+    const t = 0.3;
+    const col = rgb(0.7, 0.7, 0.7);
+    const seg = [
+      [{ x: x - m, y }, { x: x - 1, y }],
+      [{ x, y: y - m }, { x, y: y - 1 }],
+      [{ x: x + CW + 1, y }, { x: x + CW + m, y }],
+      [{ x: x + CW, y: y - m }, { x: x + CW, y: y - 1 }],
+      [{ x: x - m, y: y + CH }, { x: x - 1, y: y + CH }],
+      [{ x, y: y + CH + 1 }, { x, y: y + CH + m }],
+      [{ x: x + CW + 1, y: y + CH }, { x: x + CW + m, y: y + CH }],
+      [{ x: x + CW, y: y + CH + 1 }, { x: x + CW, y: y + CH + m }],
+    ];
+    seg.forEach(([a, b]) => page.drawLine({ start: a, end: b, thickness: t, color: col }));
+  };
+
+  for (let p = 0; p * perPage < students.length; p++) {
+    const slice = students.slice(p * perPage, (p + 1) * perPage);
+
+    const rectoPage = pdfDoc.addPage([A4.width, A4.height]);
+    slice.forEach((student, i) => {
+      const { x, y } = slotPos(i);
+      drawRecto(rectoPage, x, y, CW, CH, {
+        student, classInfo, collegeInfo, logo,
+        photo: photos[p * perPage + i], font, bold, italic, year,
+      });
+      drawCropMarks(rectoPage, x, y);
+    });
+
+    if (includeVerso) {
+      const versoPage = pdfDoc.addPage([A4.width, A4.height]);
+      slice.forEach((_, i) => {
+        // miroir horizontal pour l'impression recto/verso bord long
+        const r = Math.floor(i / COLS);
+        const c = COLS - 1 - (i % COLS);
+        const x = startX + c * (CW + gapX);
+        const y = startY - (r + 1) * CH - r * gapY;
+        drawVerso(versoPage, x, y, CW, CH, versoCtx);
+        drawCropMarks(versoPage, x, y);
+      });
     }
   }
 
-  // Right side: Information
-  const infoX = photoWidth + margin;
-  const infoWidth = width - photoWidth - margin * 2;
-  let textY = height - margin - 10;
-  const lineHeight = 8;
-  const fontSize = 6.5;
-
-  const infos = [
-    { label: 'MATRICULE', value: student.matricule, bold: true },
-    { label: 'NOM', value: student.nom, bold: true },
-    { label: 'PRÉNOM', value: student.prenom, bold: true },
-    { label: 'CLASSE', value: classInfo?.code || '', bold: false },
-    { label: 'DATE NAISS.', value: student.date_naissance, bold: false },
-    { label: 'LIEU NAISS.', value: student.lieu_naissance || '', bold: false },
-    { label: 'NATIONALITÉ', value: student.nationalite || '', bold: false }
-  ];
-
-  infos.forEach(info => {
-    page.drawText(`${info.label}:`, {
-      x: infoX,
-      y: textY,
-      size: fontSize - 1,
-      color: rgb(0.4, 0.4, 0.4)
-    });
-    page.drawText(info.value, {
-      x: infoX,
-      y: textY - lineHeight * 1.2,
-      size: fontSize,
-      color: rgb(0, 0, 0)
-    });
-    textY -= lineHeight * 2.5;
-  });
-
-  // Watermark
-  page.drawText('FVS', {
-    x: width / 2 - 8,
-    y: 3,
-    size: 5,
-    color: rgb(0.85, 0.85, 0.85)
-  });
+  return pdfDoc.save();
 };
 
-const drawCardVerso = async (page, student, collegeInfo) => {
-  const { width, height } = page.getSize();
-  const margin = 5;
-  const centerX = width / 2;
-  const centerY = height / 2;
-
-  // Background white
-  page.drawRectangle({
-    x: 0,
-    y: 0,
-    width,
-    height,
-    color: rgb(1, 1, 1)
-  });
-
-  // College name (top)
-  let textY = height - margin - 8;
-  page.drawText(collegeInfo?.nom || 'ÉTABLISSEMENT', {
-    x: margin,
-    y: textY,
-    size: 7,
-    color: rgb(0, 0, 0),
-    maxWidth: width - margin * 2
-  });
-
-  // Location
-  textY -= 10;
-  const location = `${collegeInfo?.commune || ''}, ${collegeInfo?.departement || ''}`;
-  page.drawText(location, {
-    x: margin,
-    y: textY,
-    size: 5,
-    color: rgb(0.4, 0.4, 0.4),
-    maxWidth: width - margin * 2
-  });
-
-  // Signature placeholder
-  textY -= 15;
-  page.drawRectangle({
-    x: margin,
-    y: textY - 8,
-    width: 30,
-    height: 10,
-    color: rgb(0.95, 0.95, 0.95),
-    borderColor: rgb(0.8, 0.8, 0.8),
-    borderWidth: 0.5
-  });
-  page.drawText('Signature', {
-    x: margin + 2,
-    y: textY - 6,
-    size: 4,
-    color: rgb(0.7, 0.7, 0.7)
-  });
-
-  // QR Code placeholder (center)
-  const qrSize = 25;
-  page.drawRectangle({
-    x: centerX - qrSize / 2,
-    y: centerY - qrSize / 2,
-    width: qrSize,
-    height: qrSize,
-    color: rgb(0.95, 0.95, 0.95),
-    borderColor: rgb(0, 0, 0),
-    borderWidth: 0.5
-  });
-  page.drawText('QR', {
-    x: centerX - 5,
-    y: centerY - 3,
-    size: 6,
-    color: rgb(0.5, 0.5, 0.5)
-  });
-
-  // Footer info
-  textY = margin + 18;
-  const footerLines = [
-    'Réalisé par FVS',
-    'contact@fvs.com',
-    '+229 97 268 741'
-  ];
-  footerLines.forEach(line => {
-    page.drawText(line, {
-      x: margin,
-      y: textY,
-      size: 4.5,
-      color: rgb(0.5, 0.5, 0.5)
-    });
-    textY += 6;
-  });
-
-  // FVS watermark
-  page.drawText('FVS', {
-    x: width - margin - 12,
-    y: 3,
-    size: 5,
-    color: rgb(0.85, 0.85, 0.85)
-  });
+// ---- Export PDF (masse)
+export const generateFinalCardsPDF = async (students, classInfo, collegeInfo, options = {}) => {
+  const bytes = await buildFinalCardsPdfBytes(students, classInfo, collegeInfo, options);
+  const suffix = options.layout === 'pvc' ? 'pvc' : 'a4';
+  downloadFile(bytes, `cartes_${classInfo?.code || 'export'}_${suffix}.pdf`);
 };
 
-// ============================================================================
-// FINAL CARDS EXPORT AS IMAGES (JPG, 1012×638px)
-// ============================================================================
+// ---- Export PDF d'une seule carte (recto + verso, format carte)
+export const generateSingleCardPDF = async (student, classInfo, collegeInfo, options = {}) => {
+  const bytes = await buildFinalCardsPdfBytes([student], classInfo, collegeInfo, {
+    ...options,
+    layout: 'pvc',
+  });
+  downloadFile(bytes, `carte_${student?.matricule || 'eleve'}.pdf`);
+};
 
-export const generateFinalCardsImages = async (students, classInfo, collegeInfo) => {
+// ---- Impression directe (boite de dialogue systeme -> choix imprimante PVC)
+export const printFinalCards = async (students, classInfo, collegeInfo, options = {}) => {
+  const bytes = await buildFinalCardsPdfBytes(students, classInfo, collegeInfo, options);
+  const blob = new Blob([bytes], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+
+  const old = document.getElementById('fvs-print-frame');
+  if (old) old.remove();
+
+  const iframe = document.createElement('iframe');
+  iframe.id = 'fvs-print-frame';
+  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+  iframe.src = url;
+  document.body.appendChild(iframe);
+
+  await new Promise((resolve) => {
+    iframe.onload = () => setTimeout(resolve, 400);
+  });
+
   try {
-    // Use canvas for rendering
-    for (let i = 0; i < students.length; i++) {
-      const student = students[i];
-
-      // Recto
-      const rectoCanvas = createCardCanvas(1012, 638);
-      const rectoCtx = rectoCanvas.getContext('2d');
-      await drawRectoCanvas(rectoCtx, student, classInfo);
-      downloadCanvasAsImage(
-        rectoCanvas,
-        `carte_${student.matricule}_recto.jpg`
-      );
-
-      // Verso
-      const versoCanvas = createCardCanvas(1012, 638);
-      const versoCtx = versoCanvas.getContext('2d');
-      await drawVersoCanvas(versoCtx, student, collegeInfo);
-      downloadCanvasAsImage(
-        versoCanvas,
-        `carte_${student.matricule}_verso.jpg`
-      );
-    }
-  } catch (error) {
-    console.error('Error generating cards as images:', error);
-    throw error;
+    iframe.contentWindow.focus();
+    iframe.contentWindow.print();
+  } catch {
+    window.open(url, '_blank');
   }
+
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
 };
 
-const createCardCanvas = (width, height) => {
+// ============================================================================
+// EXPORT PNG (une carte, 300 DPI)
+// ============================================================================
+
+const canvasCtxFor = (widthPx, cardWidthMm, cardHeightMm) => {
+  const ratio = cardHeightMm / cardWidthMm;
   const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
+  canvas.width = widthPx;
+  canvas.height = Math.round(widthPx * ratio);
   return canvas;
 };
 
-const drawRectoCanvas = async (ctx, student, classInfo) => {
-  const w = ctx.canvas.width;
-  const h = ctx.canvas.height;
-  const margin = 20;
-
-  // White background
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillRect(0, 0, w, h);
-
-  // Left: Photo area
-  const photoW = w * 0.35;
-  const photoH = h - margin * 2;
-  ctx.fillStyle = '#F5F5F5';
-  ctx.fillRect(margin, margin, photoW - margin * 2, photoH);
-  ctx.strokeStyle = '#CCCCCC';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(margin, margin, photoW - margin * 2, photoH);
-
-  if (student.photo_path) {
-    ctx.fillStyle = '#999999';
-    ctx.font = 'bold 32px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText('📸', photoW / 2, h / 2);
-  }
-
-  // Right: Info
-  const infoX = photoW + margin;
-  const infoW = w - photoW - margin * 2;
-  let textY = h - margin - 20;
-  const lineHeight = 25;
-  const fontSize = 18;
-
-  ctx.fillStyle = '#000000';
-  ctx.font = `bold ${fontSize}px Arial`;
-  ctx.textAlign = 'left';
-
-  const infos = [
-    `MAT: ${student.matricule}`,
-    `NOM: ${student.nom}`,
-    `PRENOM: ${student.prenom}`,
-    `CLASSE: ${classInfo?.code || ''}`,
-    `DATE: ${student.date_naissance}`,
-    `NATIONALITÉ: ${student.nationalite || ''}`
-  ];
-
-  infos.forEach(info => {
-    ctx.fillText(info, infoX, textY);
-    textY -= lineHeight;
-  });
-
-  // Watermark
-  ctx.fillStyle = 'rgba(200, 200, 200, 0.3)';
-  ctx.font = 'bold 24px Arial';
-  ctx.textAlign = 'center';
-  ctx.fillText('FVS', w / 2, 40);
+const cvHelpers = (ctx) => {
+  const H = ctx.canvas.height;
+  return {
+    // y = coordonnee "PDF" (depuis le bas) -> baseline canvas
+    text: (str, x, y, size, weight, color, align = 'left') => {
+      const t = sanitize(str);
+      if (!t) return;
+      ctx.font = `${weight} ${size}px Arial, Helvetica, sans-serif`;
+      ctx.fillStyle = color;
+      ctx.textAlign = align;
+      ctx.fillText(t, x, H - y);
+    },
+    rect: (x, y, w, h, color) => {
+      ctx.fillStyle = color;
+      ctx.fillRect(x, H - y - h, w, h);
+    },
+    strokeRect: (x, y, w, h, color, lw = 1) => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lw;
+      ctx.strokeRect(x, H - y - h, w, h);
+    },
+    line: (x1, y1, x2, y2, color, lw = 1) => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lw;
+      ctx.beginPath();
+      ctx.moveTo(x1, H - y1);
+      ctx.lineTo(x2, H - y2);
+      ctx.stroke();
+    },
+    image: (img, x, y, w, h) => ctx.drawImage(img, x, H - y - h, w, h),
+    measure: (str, size, weight) => {
+      ctx.font = `${weight} ${size}px Arial, Helvetica, sans-serif`;
+      return ctx.measureText(sanitize(str)).width;
+    },
+  };
 };
 
-const drawVersoCanvas = async (ctx, student, collegeInfo) => {
-  const w = ctx.canvas.width;
-  const h = ctx.canvas.height;
-  const margin = 20;
+const drawRectoCanvas = (ctx, { student, classInfo, collegeInfo, logoImg, photoImg, year }) => {
+  const W = ctx.canvas.width;
+  const H = ctx.canvas.height;
+  const s = W / BASE_W;
+  const u = (n) => n * s;
+  const d = cvHelpers(ctx);
+  const P = u(5);
 
-  // White background
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillRect(0, 0, w, h);
+  d.rect(0, 0, W, H, '#FFFFFF');
 
-  // Header
-  let textY = h - margin - 20;
-  ctx.fillStyle = '#000000';
-  ctx.font = 'bold 24px Arial';
-  ctx.textAlign = 'left';
-  ctx.fillText(collegeInfo?.nom || 'ÉTABLISSEMENT', margin, textY);
+  const logoW = u(104);
+  const logoH = logoImg ? logoW * (logoImg.height / logoImg.width) : u(22);
+  if (logoImg) d.image(logoImg, P, H - P - logoH, logoW, logoH);
 
-  textY -= 40;
-  ctx.font = '14px Arial';
-  ctx.fillStyle = '#666666';
-  const location = `${collegeInfo?.commune || ''}, ${collegeInfo?.departement || ''}`;
-  ctx.fillText(location, margin, textY);
+  const cbX = P + logoW + u(4);
+  const cbW = W - cbX - P;
+  let cy = H - P - u(7);
+  d.text((collegeInfo?.nom || '').toUpperCase(), cbX + cbW / 2, cy, u(7), 'bold', '#000', 'center');
+  cy -= u(9);
+  if (collegeInfo?.telephone) {
+    d.text(`Tel : ${collegeInfo.telephone}`, cbX + cbW / 2, cy, u(5.5), 'normal', '#000', 'center');
+    cy -= u(7);
+  }
+  const loc = [collegeInfo?.commune, collegeInfo?.departement].filter(Boolean).join(' - ');
+  if (loc) d.text(loc, cbX + cbW / 2, cy, u(5.5), 'normal', '#000', 'center');
 
-  // QR Code placeholder (center)
-  const qrSize = 80;
-  const qrX = w / 2 - qrSize / 2;
-  const qrY = h / 2 - qrSize / 2;
+  const titleY = H - P - logoH - u(11);
+  d.text(`CARTE D'IDENTITE SCOLAIRE   ${year}`, W / 2, titleY, u(9), 'bold', '#000', 'center');
 
-  ctx.fillStyle = '#F5F5F5';
-  ctx.fillRect(qrX, qrY, qrSize, qrSize);
-  ctx.strokeStyle = '#000000';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(qrX, qrY, qrSize, qrSize);
+  const photoX = u(8);
+  const photoW = u(52);
+  const photoH = u(62);
+  const photoY = titleY - u(8) - photoH;
+  d.rect(photoX, photoY, photoW, photoH, '#141414');
+  if (photoImg) {
+    const { w, h } = fitContain(photoImg.width, photoImg.height, photoW, photoH);
+    d.image(photoImg, photoX + (photoW - w) / 2, photoY + (photoH - h) / 2, w, h);
+  }
+  d.text(`Mle : ${student?.matricule || ''}`, photoX + photoW / 2, photoY - u(9), u(7), 'bold', '#000', 'center');
 
-  ctx.fillStyle = '#999999';
-  ctx.font = 'bold 20px Arial';
+  const infoX = photoX + photoW + u(9);
+  const labelSize = u(6.5);
+  const lineH = u(8.5);
+  const rows = [
+    ['Nom :', student?.nom || ''],
+    ['Prenom(s) :', student?.prenom || ''],
+    ['Ne(e) le :', `${student?.date_naissance || ''}${student?.lieu_naissance ? `   a   ${student.lieu_naissance}` : ''}`],
+    ['Sexe :', formatSexe(student?.sexe)],
+    ['Nationalite :', student?.nationalite || ''],
+    ['Adresse :', student?.adresse || ''],
+    ['Classe :', classInfo?.code || ''],
+  ];
+  let ry = titleY - u(10);
+  rows.forEach(([label, value]) => {
+    const lw = d.measure(label, labelSize, 'normal');
+    d.text(label, infoX, ry, labelSize, 'normal', '#000');
+    d.line(infoX, ry - u(1.6), infoX + lw, ry - u(1.6), '#000', Math.max(1, u(0.4)));
+    d.text(value, infoX + lw + u(6), ry, labelSize, 'bold', '#000');
+    ry -= lineH;
+  });
+
+  const bandX = infoX;
+  const bandW = u(85);
+  const seg = bandW / 3;
+  d.rect(bandX, u(8), seg, u(4.5), '#00873E');
+  d.rect(bandX + seg, u(8), seg, u(4.5), '#FCD900');
+  d.rect(bandX + seg * 2, u(8), seg, u(4.5), '#E31C24');
+
+  const sigW = u(64);
+  const sigH = u(22);
+  const sigX = W - P - sigW;
+  d.strokeRect(sigX, u(15), sigW, sigH, '#333', Math.max(1, u(0.5)));
+  ctx.font = `italic ${u(4.2)}px Arial, Helvetica, sans-serif`;
+  ctx.fillStyle = '#737373';
   ctx.textAlign = 'center';
-  ctx.fillText('QR', w / 2, h / 2);
+  ctx.fillText("Signature de l'apprenant", sigX + sigW / 2, H - u(9));
+};
 
-  // Footer
-  textY = margin + 40;
-  ctx.fillStyle = '#666666';
-  ctx.font = '12px Arial';
-  ctx.textAlign = 'left';
-  ctx.fillText('Réalisé par FVS', margin, textY);
-  ctx.fillText('contact@fvs.com', margin, textY + 20);
-  ctx.fillText('+229 97 268 741', margin, textY + 40);
+const drawVersoCanvas = (ctx, { collegeInfo, qrImg, signImg, year }) => {
+  const W = ctx.canvas.width;
+  const H = ctx.canvas.height;
+  const s = W / BASE_W;
+  const u = (n) => n * s;
+  const d = cvHelpers(ctx);
+  const P = u(6);
 
-  // Watermark
-  ctx.fillStyle = 'rgba(200, 200, 200, 0.3)';
-  ctx.font = 'bold 24px Arial';
-  ctx.textAlign = 'center';
-  ctx.fillText('FVS', w / 2, 40);
+  d.rect(0, 0, W, H, '#FFFFFF');
+
+  d.text('FVS', W - P, H - P - u(7), u(9), 'bold', '#DCE0DE', 'right');
+  ctx.font = `italic ${u(3.8)}px Arial, Helvetica, sans-serif`;
+  ctx.fillStyle = '#DCE0DE';
+  ctx.textAlign = 'right';
+  ctx.fillText('Realise par FVS', W - P, H - (H - P - u(13)));
+
+  let cy = H - u(20);
+  d.text((collegeInfo?.nom || '').toUpperCase(), W / 2, cy, u(8), 'bold', '#000', 'center');
+  cy -= u(11);
+  if (collegeInfo?.telephone) {
+    d.text(`TEL : ${collegeInfo.telephone}`, W / 2, cy, u(6.5), 'bold', '#E31C24', 'center');
+    cy -= u(11);
+  }
+  d.text(`CARTE D'IDENTITE SCOLAIRE : ${year}`, W / 2, cy, u(6.5), 'bold', '#000', 'center');
+  cy -= u(13);
+
+  const rightX = W * 0.42;
+  const rightW = W * 0.58 - P;
+  d.text('LE DIRECTEUR', rightX + rightW / 2, cy, u(6), 'bold', '#000', 'center');
+
+  const sigBoxW = u(70);
+  const sigBoxH = u(24);
+  const sigX = rightX + (rightW - sigBoxW) / 2;
+  const sigY = cy - u(6) - sigBoxH;
+
+  if (signImg) {
+    const { w, h } = fitContain(signImg.width, signImg.height, sigBoxW, sigBoxH);
+    d.image(signImg, sigX + (sigBoxW - w) / 2, sigY + (sigBoxH - h) / 2, w, h);
+  } else if (collegeInfo?.directeur_nom) {
+    ctx.font = `italic ${u(6)}px Arial, Helvetica, sans-serif`;
+    ctx.fillStyle = '#E31C24';
+    ctx.textAlign = 'center';
+    ctx.fillText(sanitize(collegeInfo.directeur_nom), sigX + sigBoxW / 2, H - (sigY + sigBoxH / 2));
+  }
+
+  const seg = sigBoxW / 3;
+  d.rect(sigX, sigY - u(7), seg, u(4.5), '#00873E');
+  d.rect(sigX + seg, sigY - u(7), seg, u(4.5), '#FCD900');
+  d.rect(sigX + seg * 2, sigY - u(7), seg, u(4.5), '#E31C24');
+
+  const qrSize = u(38);
+  const qrX = u(14);
+  const qrY = (H - qrSize) / 2 - u(6);
+  if (qrImg) d.image(qrImg, qrX, qrY, qrSize, qrSize);
+  else d.strokeRect(qrX, qrY, qrSize, qrSize, '#000', 1);
+};
+
+export const generateCardImages = async (students, classInfo, collegeInfo, options = {}) => {
+  const {
+    cardWidthMm = DEFAULT_CARD_MM.width,
+    cardHeightMm = DEFAULT_CARD_MM.height,
+    includeVerso = true,
+    widthPx = 1012,
+  } = options;
+
+  const year = getSchoolYear();
+  const logoImg = await loadHtmlImage('/logo.png');
+  const signImg = await loadHtmlImage(signatureFileUrl(collegeInfo?.signature_path));
+  let qrImg = null;
+  try {
+    qrImg = await loadHtmlImage(
+      await QRCode.toDataURL(buildQrPayload(collegeInfo), { margin: 0, width: 400 })
+    );
+  } catch {
+    qrImg = null;
+  }
+
+  for (const student of students) {
+    const photoImg = await loadHtmlImage(photoFileUrl(student.photo_path));
+
+    const recto = canvasCtxFor(widthPx, cardWidthMm, cardHeightMm);
+    drawRectoCanvas(recto.getContext('2d'), { student, classInfo, collegeInfo, logoImg, photoImg, year });
+    await downloadCanvas(recto, `carte_${student.matricule}_recto.png`);
+
+    if (includeVerso) {
+      const verso = canvasCtxFor(widthPx, cardWidthMm, cardHeightMm);
+      drawVersoCanvas(verso.getContext('2d'), { collegeInfo, qrImg, signImg, year });
+      await downloadCanvas(verso, `carte_${student.matricule}_verso.png`);
+    }
+  }
+};
+
+// Compatibilite ascendante
+export const generateFinalCardsImages = generateCardImages;
+
+// ============================================================================
+// BROUILLON EXPORT (tableau — une ligne par eleve) — INCHANGE
+// ============================================================================
+
+const BROUILLON_COLUMNS = [
+  { key: 'photo', label: 'Photo', width: 45 },
+  { key: 'matricule', label: 'Matricule', width: 60 },
+  { key: 'nom', label: 'Nom', width: 95 },
+  { key: 'prenom', label: 'Prénom', width: 120 },
+  { key: 'classe', label: 'Classe', width: 55 },
+  { key: 'date_naissance', label: 'Date de naissance', width: 80 },
+  { key: 'lieu_naissance', label: 'Lieu de naissance', width: 100 },
+  { key: 'nationalite', label: 'Nationalité', width: 100 },
+  { key: 'adresse', label: 'Contact parent', width: 126.89 },
+];
+
+const appendClassBrouillonPages = async (pdfDoc, font, fontBold, students, classInfo, collegeInfo) => {
+  const PAGE_WIDTH = 841.89;
+  const PAGE_HEIGHT = 595.28;
+  const MARGIN = 30;
+  const ROW_HEIGHT = 46;
+  const HEADER_ROW_HEIGHT = 24;
+  const TITLE_HEIGHT = 46;
+
+  const usableHeight = PAGE_HEIGHT - MARGIN * 2 - TITLE_HEIGHT - HEADER_ROW_HEIGHT;
+  const rowsPerPage = Math.max(1, Math.floor(usableHeight / ROW_HEIGHT));
+
+  const pages = [];
+  for (let i = 0; i < students.length; i += rowsPerPage) {
+    pages.push(students.slice(i, i + rowsPerPage));
+  }
+  if (pages.length === 0) pages.push([]);
+
+  const drawTitle = (page, pageIndex, totalPages) => {
+    let y = PAGE_HEIGHT - MARGIN;
+    page.drawText(sanitize(collegeInfo?.nom || 'Établissement'), {
+      x: MARGIN, y, size: 13, font: fontBold, color: rgb(0.05, 0.4, 0.25),
+    });
+    y -= 18;
+    page.drawText(
+      `Brouillon — Classe ${classInfo?.code || ''}  ·  ${students.length} élève${students.length > 1 ? 's' : ''}  ·  page ${pageIndex + 1}/${totalPages}`,
+      { x: MARGIN, y, size: 9, font, color: rgb(0.4, 0.4, 0.4) }
+    );
+  };
+
+  const drawHeaderRow = (page, topY) => {
+    page.drawRectangle({
+      x: MARGIN, y: topY - HEADER_ROW_HEIGHT,
+      width: PAGE_WIDTH - MARGIN * 2, height: HEADER_ROW_HEIGHT,
+      color: rgb(0.06, 0.4, 0.27),
+    });
+    let x = MARGIN;
+    BROUILLON_COLUMNS.forEach((col) => {
+      page.drawText(col.label, {
+        x: x + 6, y: topY - HEADER_ROW_HEIGHT + 8,
+        size: 8.5, font: fontBold, color: rgb(1, 1, 1),
+      });
+      x += col.width;
+    });
+  };
+
+  const drawColumnSeparators = (page, top, bottom) => {
+    let x = MARGIN;
+    BROUILLON_COLUMNS.forEach((col) => {
+      page.drawLine({ start: { x, y: top }, end: { x, y: bottom }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) });
+      x += col.width;
+    });
+    page.drawLine({ start: { x, y: top }, end: { x, y: bottom }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) });
+  };
+
+  for (let p = 0; p < pages.length; p++) {
+    const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+    drawTitle(page, p, pages.length);
+
+    const tableTop = PAGE_HEIGHT - MARGIN - TITLE_HEIGHT;
+    drawHeaderRow(page, tableTop);
+
+    const rows = pages[p];
+    const images = await Promise.all(rows.map((s) => embedStudentPhoto(pdfDoc, s.photo_path)));
+
+    let rowTop = tableTop - HEADER_ROW_HEIGHT;
+
+    rows.forEach((student, idx) => {
+      const rowBottom = rowTop - ROW_HEIGHT;
+
+      if (idx % 2 === 1) {
+        page.drawRectangle({
+          x: MARGIN, y: rowBottom,
+          width: PAGE_WIDTH - MARGIN * 2, height: ROW_HEIGHT,
+          color: rgb(0.97, 0.98, 0.97),
+        });
+      }
+
+      let x = MARGIN;
+      const pdfImage = images[idx];
+      const photoCol = BROUILLON_COLUMNS[0];
+      const boxSize = ROW_HEIGHT - 10;
+      if (pdfImage) {
+        const { w, h } = fitContain(pdfImage.width, pdfImage.height, boxSize, boxSize);
+        page.drawImage(pdfImage, {
+          x: x + (photoCol.width - w) / 2,
+          y: rowBottom + (ROW_HEIGHT - h) / 2,
+          width: w, height: h,
+        });
+      } else {
+        page.drawRectangle({
+          x: x + (photoCol.width - boxSize) / 2, y: rowBottom + 5,
+          width: boxSize, height: boxSize, color: rgb(0.94, 0.94, 0.94),
+        });
+      }
+      x += photoCol.width;
+
+      const values = {
+        matricule: student.matricule,
+        nom: student.nom,
+        prenom: student.prenom,
+        classe: classInfo?.code || '',
+        date_naissance: student.date_naissance || '',
+        lieu_naissance: student.lieu_naissance || '',
+        nationalite: student.nationalite || '',
+        adresse: student.adresse || '',
+      };
+
+      BROUILLON_COLUMNS.slice(1).forEach((col) => {
+        page.drawText(truncateText(font, values[col.key], 9, col.width - 12), {
+          x: x + 6, y: rowBottom + ROW_HEIGHT / 2 - 4,
+          size: 9, font, color: rgb(0.15, 0.15, 0.15),
+        });
+        x += col.width;
+      });
+
+      page.drawLine({
+        start: { x: MARGIN, y: rowBottom }, end: { x: PAGE_WIDTH - MARGIN, y: rowBottom },
+        thickness: 0.5, color: rgb(0.88, 0.88, 0.88),
+      });
+
+      rowTop = rowBottom;
+    });
+
+    drawColumnSeparators(page, tableTop, rowTop);
+  }
+};
+
+export const generateBrouillonPDF = async (students, classInfo, collegeInfo) => {
+  const pdfDoc = await PDFDocument.create();
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  await appendClassBrouillonPages(pdfDoc, font, fontBold, students, classInfo, collegeInfo);
+  downloadFile(await pdfDoc.save(), `brouillon_${classInfo?.code || 'cartes'}.pdf`);
+};
+
+export const generateCollegeBrouillonPDF = async (classesWithStudents, collegeInfo) => {
+  const pdfDoc = await PDFDocument.create();
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  for (const { classInfo, students } of classesWithStudents) {
+    await appendClassBrouillonPages(pdfDoc, font, fontBold, students, classInfo, collegeInfo);
+  }
+  downloadFile(await pdfDoc.save(), `brouillon_${collegeInfo?.nom || 'college'}.pdf`);
 };
 
 // ============================================================================
-// UTILITY FUNCTIONS
+// UTILITAIRES
 // ============================================================================
 
 const downloadFile = (data, filename) => {
@@ -512,15 +919,17 @@ const downloadFile = (data, filename) => {
   URL.revokeObjectURL(url);
 };
 
-const downloadCanvasAsImage = (canvas, filename) => {
-  canvas.toBlob(blob => {
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }, 'image/jpeg', 0.95);
-};
+const downloadCanvas = (canvas, filename) =>
+  new Promise((resolve) => {
+    canvas.toBlob((blob) => {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      resolve();
+    }, 'image/png');
+  });

@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
-
+export const FILE_BASE_URL = API_URL.replace(/\/api\/?$/, '');
 const api = axios.create({
   baseURL: API_URL,
   headers: { 'Content-Type': 'application/json' },
@@ -33,6 +33,8 @@ export const authAPI = {
   register: (email, password, confirmPassword) =>
     api.post('/auth/register', { email, password, confirmPassword }),
   verify: () => api.get('/auth/verify'),
+  verifyOtp: (email, otpCode) => api.post('/auth/verify-otp', { email, otpCode }),
+  resendOtp: (email) => api.post('/auth/resend-otp', { email }),
 };
 
 export const collegeAPI = {

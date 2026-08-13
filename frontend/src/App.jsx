@@ -8,9 +8,6 @@ import OtpVerification from './pages/OtpVerification';
 import Dashboard from './pages/Dashboard';
 import ClassesManagement from './pages/ClassesManagement';
 import CollegeForm from './pages/CollegeForm';
-import StudentsManagement from './pages/StudentsManagement';
-import BrouillonExport from './pages/BrouillonExport';
-import FinalCards from './pages/FinalCards';
 
 // Setup API defaults
 const API_URL = import.meta.env.VITE_API_URL;
@@ -20,12 +17,10 @@ axios.defaults.baseURL = API_URL;
 const PrivateRoute = ({ children, isAuthenticated, loading }) => {
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-sky-50">
-        <div className="text-center">
-          <div className="inline-block">
-            <div className="w-12 h-12 border-4 border-sky-300 border-t-sky-600 rounded-full animate-spin"></div>
-          </div>
-          <p className="mt-4 text-gray-600">Chargement...</p>
+      <div className="flex items-center justify-center min-h-screen bg-[#f7faf8]">
+        <div className="flex items-center gap-2 text-slate-400">
+          <div className="w-5 h-5 border-2 border-slate-200 border-t-emerald-600 rounded-full animate-spin" />
+          <span className="text-sm">Chargement</span>
         </div>
       </div>
     );
@@ -120,36 +115,6 @@ function App() {
           element={
             <PrivateRoute isAuthenticated={isAuthenticated} loading={loading}>
               <ClassesManagement />
-            </PrivateRoute>
-          }
-        />
-
-        {/* Students Routes */}
-        <Route
-          path="/classes/:classId/students"
-          element={
-            <PrivateRoute isAuthenticated={isAuthenticated} loading={loading}>
-              <StudentsManagement />
-            </PrivateRoute>
-          }
-        />
-
-        {/* Brouillon Routes */}
-        <Route
-          path="/classes/:classId/brouillon"
-          element={
-            <PrivateRoute isAuthenticated={isAuthenticated} loading={loading}>
-              <BrouillonExport />
-            </PrivateRoute>
-          }
-        />
-
-        {/* Final Cards Routes */}
-        <Route
-          path="/classes/:classId/cartes"
-          element={
-            <PrivateRoute isAuthenticated={isAuthenticated} loading={loading}>
-              <FinalCards />
             </PrivateRoute>
           }
         />
