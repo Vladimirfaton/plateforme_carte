@@ -1,7 +1,7 @@
 import { Student } from '../models/Student.js';
 import { Class } from '../models/Class.js';
 import logger from '../config/logger.js';
-import fs from 'fs/promises';
+import { uploadBuffer, deleteByPublicUrl } from '../utils/storage.js';
 
 export const createStudent = async (req, res) => {
   try {
@@ -25,10 +25,12 @@ export const createStudent = async (req, res) => {
       return res.status(409).json({ error: 'Ce matricule existe déjà' });
     }
 
+    const photoUrl = req.file ? await uploadBuffer('photos', req.file) : null;
+
     const student = await Student.create(classId, {
       matricule, nom, prenom, sexe, date_naissance,
       lieu_naissance, nationalite, adresse, telephone,
-      photo_path: req.file ? req.file.path : null,
+      photo_path: photoUrl,
     });
 
     logger.info(`Student created: ${student.id} - ${nom} ${prenom}`);
@@ -100,15 +102,13 @@ export const updateStudentPhoto = async (req, res) => {
       return res.status(404).json({ error: 'Élève non trouvé' });
     }
 
+    const newPhotoUrl = await uploadBuffer('photos', req.file);
+
     if (student.photo_path) {
-      try {
-        await fs.unlink(student.photo_path);
-      } catch {
-        logger.warn(`Could not delete old photo: ${student.photo_path}`);
-      }
+      await deleteByPublicUrl(student.photo_path);
     }
 
-    const updated = await Student.updatePhoto(studentId, req.file.path);
+    const updated = await Student.updatePhoto(studentId, newPhotoUrl);
     logger.info(`Photo updated for student: ${studentId}`);
     res.json(updated);
   } catch (error) {
@@ -127,11 +127,7 @@ export const deleteStudent = async (req, res) => {
     }
 
     if (student.photo_path) {
-      try {
-        await fs.unlink(student.photo_path);
-      } catch {
-        logger.warn(`Could not delete photo: ${student.photo_path}`);
-      }
+      await deleteByPublicUrl(student.photo_path);
     }
 
     await Student.delete(studentId);

@@ -29,11 +29,19 @@ export const getSchoolYear = (date = new Date()) => {
 // RESSOURCES (photos, logo, signature, QR)
 // ============================================================================
 
-const photoFileUrl = (photoPath) =>
-  photoPath ? `${FILE_BASE_URL}/uploads/photos/${photoPath.split(/[\\/]/).pop()}` : null;
+// Depuis la migration vers Supabase Storage, photo_path/signature_path contiennent
+// deja l'URL publique complete -> on l'utilise telle quelle. Les anciens enregistrements
+// (avant migration) contiennent encore un chemin local -> on reconstruit l'URL /uploads/...
+// comme avant, pour rester compatible avec les donnees existantes.
+const resolveFileUrl = (value, folder) => {
+  if (!value) return null;
+  if (/^https?:\/\//i.test(value)) return value;
+  return `${FILE_BASE_URL}/uploads/${folder}/${value.split(/[\\/]/).pop()}`;
+};
 
-const signatureFileUrl = (signaturePath) =>
-  signaturePath ? `${FILE_BASE_URL}/uploads/signatures/${signaturePath.split(/[\\/]/).pop()}` : null;
+const photoFileUrl = (photoPath) => resolveFileUrl(photoPath, 'photos');
+
+const signatureFileUrl = (signaturePath) => resolveFileUrl(signaturePath, 'signatures');
 
 const embedFromUrl = async (pdfDoc, url) => {
   if (!url) return null;
@@ -55,16 +63,16 @@ const embedStudentPhoto = (pdfDoc, photoPath) => embedFromUrl(pdfDoc, photoFileU
 const embedSignature = (pdfDoc, signaturePath) => embedFromUrl(pdfDoc, signatureFileUrl(signaturePath));
 const embedLogo = (pdfDoc) => embedFromUrl(pdfDoc, '/logo.png');
 
-export const buildQrPayload = (collegeInfo) =>
-  [
-    collegeInfo?.nom || 'Etablissement',
-    collegeInfo?.telephone ? `Tel: ${collegeInfo.telephone}` : null,
-    collegeInfo?.email ? `Email: ${collegeInfo.email}` : null,
-    [collegeInfo?.commune, collegeInfo?.departement].filter(Boolean).join(', ') || null,
-    'Realise par FVS',
-  ]
-    .filter(Boolean)
-    .join('\n');
+// Le QR pointe vers la page publique servie par le backend (verso commun a tout un
+// college) : GET /api/colleges/:id/carte-info — affiche logo/infos + filigrane FVS,
+// sans authentification, consultable par quiconque scanne une carte perdue/retrouvee.
+// FILE_BASE_URL = VITE_API_URL sans le suffixe /api (voir services/api.js). En local,
+// VITE_API_URL doit pointer vers l'IP reseau du PC (pas "localhost") pour etre
+// joignable depuis un telephone.
+export const buildQrPayload = (collegeInfo) => {
+  if (!collegeInfo?.id) return `${FILE_BASE_URL}/api/colleges`;
+  return `${FILE_BASE_URL}/api/colleges/${collegeInfo.id}/carte-info`;
+};
 
 const embedQr = async (pdfDoc, text) => {
   try {
@@ -115,7 +123,7 @@ const truncateText = (font, text, size, maxWidth) => {
   return cut + '...';
 };
 
-const wrapText = (font, text, size, maxWidth, maxLines = 2) => {
+export const wrapText = (font, text, size, maxWidth, maxLines = 2) => {
   const words = sanitize(text).split(/\s+/).filter(Boolean);
   const lines = [];
   let current = '';
@@ -144,6 +152,20 @@ const drawCentered = (page, text, font, size, boxX, boxW, y, color = BLACK) => {
   page.drawText(str, { x: boxX + (boxW - w) / 2, y, size, font, color });
 };
 
+// Calcule la plus grande taille de police faisant tenir `text` sur une ligne, en visant
+// une largeur cible (ex: 70% de la carte), plafonnee par [minSize, maxSize] et par une
+// largeur de securite (maxWidth) a ne jamais depasser. Si meme au corps minimal le texte
+// deborde de maxWidth, on repasse la main a l'appelant pour un passage sur 2 lignes.
+// measureFn(text, size) doit retourner la largeur du texte a la taille donnee.
+export const fitTitleSize = (measureFn, text, targetWidth, maxWidth, minSize, maxSize) => {
+  const unit = measureFn(text, 1) || 1;
+  let size = targetWidth / unit;
+  size = Math.min(maxSize, Math.max(minSize, size));
+  while (size > minSize && measureFn(text, size) > maxWidth) size -= 0.4;
+  const fits = measureFn(text, size) <= maxWidth;
+  return { size, fits };
+};
+
 const drawTricolor = (page, x, y, w, h) => {
   const seg = w / 3;
   page.drawRectangle({ x, y, width: seg, height: h, color: GREEN });
@@ -153,9 +175,18 @@ const drawTricolor = (page, x, y, w, h) => {
 
 const formatSexe = (s) => {
   const v = (s || '').toString().trim().toUpperCase();
-  if (v === 'F' || v.startsWith('FEM')) return 'Feminin';
+  if (v === 'F' || v.startsWith('FEM')) return 'Féminin';
   if (v === 'M' || v.startsWith('MAS')) return 'Masculin';
   return s || '';
+};
+
+// L'API renvoie la date au format YYYY-MM-DD (TO_CHAR cote backend) -> affichage jj/mm/aaaa sur les cartes
+const formatDateFr = (value) => {
+  if (!value) return '';
+  const str = value.toString().trim();
+  const m = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  return str;
 };
 
 // ============================================================================
@@ -229,10 +260,10 @@ const drawRecto = (page, ox, oy, W, H, ctx) => {
 
   const rows = [
     ['Nom :', student?.nom || ''],
-    ['Prenom(s) :', student?.prenom || ''],
-    ['Ne(e) le :', `${student?.date_naissance || ''}${student?.lieu_naissance ? `   a   ${student.lieu_naissance}` : ''}`],
+    ['Prénom(s) :', student?.prenom || ''],
+    ['Né(e) le :', `${formatDateFr(student?.date_naissance)}${student?.lieu_naissance ? `   à   ${student.lieu_naissance}` : ''}`],
     ['Sexe :', formatSexe(student?.sexe)],
-    ['Nationalite :', student?.nationalite || ''],
+    ['Nationalité :', student?.nationalite || ''],
     ['Adresse :', student?.adresse || ''],
     ['Classe :', classInfo?.code || ''],
   ];
@@ -284,42 +315,48 @@ const drawVerso = (page, ox, oy, W, H, ctx) => {
     color: rgb(1, 1, 1), borderColor: LIGHT, borderWidth: 0.5,
   });
 
-  // ---- Filigrane FVS (haut droit)
-  page.drawText('FVS', {
-    x: ox + W - P - u(24), y: top - P - u(7),
-    size: u(9), font: bold, color: rgb(0.86, 0.88, 0.87),
-  });
-  page.drawText('Realise par FVS', {
-    x: ox + W - P - u(46), y: top - P - u(13),
-    size: u(3.8), font: italic, color: rgb(0.86, 0.88, 0.87),
-  });
+  // ---- Bloc central : nom de l'etablissement en tres grande police (~70% de la largeur,
+  // la plus grande police de la carte), puis tel et titre en dessous
+  const nameText = sanitize((collegeInfo?.nom || '').toUpperCase());
+  const NAME_MIN = u(8);
+  const NAME_MAX = u(15);
+  const nameMaxWidth = W - P * 2;
+  const fit = fitTitleSize(
+    (t, sz) => bold.widthOfTextAtSize(t, sz),
+    nameText, W * 0.7, nameMaxWidth, NAME_MIN, NAME_MAX
+  );
 
-  // ---- Bloc central
-  let cy = top - u(20);
-  wrapText(bold, (collegeInfo?.nom || '').toUpperCase(), u(8), W - P * 2, 2).forEach((line) => {
-    drawCentered(page, line, bold, u(8), ox, W, cy);
-    cy -= u(10);
+  // Marge visuelle constante au-dessus du nom, quelle que soit la taille de police retenue
+  // (avant : offset fixe -> le texte remontait visuellement quand la police grandissait)
+  const TOP_MARGIN = u(9);
+  const ASCENT = 0.74; // approx. hauteur des majuscules au-dessus de la ligne de base (Helvetica Bold)
+  let cy = top - TOP_MARGIN - fit.size * ASCENT;
+  const nameLines = fit.fits ? [nameText] : wrapText(bold, nameText, fit.size, nameMaxWidth, 2);
+  nameLines.forEach((line) => {
+    drawCentered(page, line, bold, fit.size, ox, W, cy, BLACK);
+    cy -= fit.size * 1.25;
   });
+  cy -= u(3);
 
   if (collegeInfo?.telephone) {
-    drawCentered(page, `TEL : ${collegeInfo.telephone}`, bold, u(6.5), ox, W, cy, RED);
+    drawCentered(page, `TEL : ${collegeInfo.telephone}`, font, u(6.5), ox, W, cy, BLACK);
     cy -= u(11);
   }
 
-  drawCentered(page, `CARTE D'IDENTITE SCOLAIRE : ${year}`, bold, u(6.5), ox, W, cy);
-  cy -= u(13);
+  drawCentered(page, `CARTE D'IDENTITE SCOLAIRE : ${year}`, bold, u(6.5), ox, W, cy, BLACK);
+  cy -= u(16);
 
-  // ---- Colonne directeur (moitie droite)
+  // ---- Colonne directeur (moitie droite) : label, zone de signature vierge, nom souligne
   const rightX = ox + W * 0.42;
   const rightW = W * 0.58 - P;
 
-  drawCentered(page, 'LE DIRECTEUR', bold, u(6), rightX, rightW, cy);
+  drawCentered(page, 'LE DIRECTEUR', bold, u(6), rightX, rightW, cy, BLACK);
 
-  const sigTop = cy - u(6);
-  const sigBoxW = u(70);
+  const sigBoxW = u(72);
   const sigBoxH = u(24);
   const sigX = rightX + (rightW - sigBoxW) / 2;
-  const sigY = sigTop - sigBoxH;
+  const sigAreaTop = cy - u(9);
+  const sigY = sigAreaTop - sigBoxH;
 
   if (signature) {
     const { w, h } = fitContain(signature.width, signature.height, sigBoxW, sigBoxH);
@@ -328,15 +365,31 @@ const drawVerso = (page, ox, oy, W, H, ctx) => {
       y: sigY + (sigBoxH - h) / 2,
       width: w, height: h,
     });
-  } else if (collegeInfo?.directeur_nom) {
-    drawCentered(page, collegeInfo.directeur_nom, italic, u(6), sigX, sigBoxW, sigY + sigBoxH / 2, RED);
+  }
+  // sinon : zone laissee vierge pour une signature manuscrite
+
+  const nameY = sigY - u(8);
+  const directorName = sanitize(collegeInfo?.directeur_nom || '');
+  if (directorName) {
+    const dirSize = u(6.5);
+    const dirW = bold.widthOfTextAtSize(directorName, dirSize);
+    const nameCenterX = sigX + sigBoxW / 2;
+    page.drawText(directorName, {
+      x: nameCenterX - dirW / 2, y: nameY, size: dirSize, font: bold, color: BLACK,
+    });
+    page.drawLine({
+      start: { x: nameCenterX - dirW / 2, y: nameY - u(2) },
+      end: { x: nameCenterX + dirW / 2, y: nameY - u(2) },
+      thickness: 0.5, color: BLACK,
+    });
   }
 
-  // ---- Bande tricolore sous la signature
-  drawTricolor(page, sigX, sigY - u(7), sigBoxW, u(4.5));
+  // ---- Bande tricolore centree sur toute la largeur de la carte
+  const bandW = u(85);
+  drawTricolor(page, ox + (W - bandW) / 2, oy + u(8), bandW, u(4.5));
 
-  // ---- QR code (gauche)
-  const qrSize = u(38);
+  // ---- QR code (gauche, reduit) — contient les coordonnees de l'etablissement + mention FVS
+  const qrSize = u(28);
   const qrX = ox + u(14);
   const qrY = oy + (H - qrSize) / 2 - u(6);
   if (qr) {
@@ -569,6 +622,26 @@ const cvHelpers = (ctx) => {
   };
 };
 
+// Repli 2 lignes pour le canvas (equivalent de wrapText, mesure via cvHelpers.measure)
+const wrapCanvasText = (d, text, size, weight, maxWidth, maxLines = 2) => {
+  const words = sanitize(text).split(/\s+/).filter(Boolean);
+  const lines = [];
+  let current = '';
+  for (const word of words) {
+    const test = current ? `${current} ${word}` : word;
+    if (d.measure(test, size, weight) <= maxWidth || !current) {
+      current = test;
+    } else {
+      lines.push(current);
+      current = word;
+      if (lines.length === maxLines) break;
+    }
+  }
+  if (lines.length < maxLines && current) lines.push(current);
+  if (lines.length > maxLines) lines.length = maxLines;
+  return lines;
+};
+
 const drawRectoCanvas = (ctx, { student, classInfo, collegeInfo, logoImg, photoImg, year }) => {
   const W = ctx.canvas.width;
   const H = ctx.canvas.height;
@@ -614,10 +687,10 @@ const drawRectoCanvas = (ctx, { student, classInfo, collegeInfo, logoImg, photoI
   const lineH = u(8.5);
   const rows = [
     ['Nom :', student?.nom || ''],
-    ['Prenom(s) :', student?.prenom || ''],
-    ['Ne(e) le :', `${student?.date_naissance || ''}${student?.lieu_naissance ? `   a   ${student.lieu_naissance}` : ''}`],
+    ['Prénom(s) :', student?.prenom || ''],
+    ['Né(e) le :', `${formatDateFr(student?.date_naissance)}${student?.lieu_naissance ? `   à   ${student.lieu_naissance}` : ''}`],
     ['Sexe :', formatSexe(student?.sexe)],
-    ['Nationalite :', student?.nationalite || ''],
+    ['Nationalité :', student?.nationalite || ''],
     ['Adresse :', student?.adresse || ''],
     ['Classe :', classInfo?.code || ''],
   ];
@@ -657,47 +730,68 @@ const drawVersoCanvas = (ctx, { collegeInfo, qrImg, signImg, year }) => {
 
   d.rect(0, 0, W, H, '#FFFFFF');
 
-  d.text('FVS', W - P, H - P - u(7), u(9), 'bold', '#DCE0DE', 'right');
-  ctx.font = `italic ${u(3.8)}px Arial, Helvetica, sans-serif`;
-  ctx.fillStyle = '#DCE0DE';
-  ctx.textAlign = 'right';
-  ctx.fillText('Realise par FVS', W - P, H - (H - P - u(13)));
+  // ---- Bloc central : nom de l'etablissement en tres grande police (~70% de la largeur)
+  const collegeName = sanitize((collegeInfo?.nom || '').toUpperCase());
+  const NAME_MIN = u(8);
+  const NAME_MAX = u(15);
+  const nameMaxWidth = W - P * 2;
+  const fit = fitTitleSize(
+    (t, sz) => d.measure(t, sz, 'bold'),
+    collegeName, W * 0.7, nameMaxWidth, NAME_MIN, NAME_MAX
+  );
 
-  let cy = H - u(20);
-  d.text((collegeInfo?.nom || '').toUpperCase(), W / 2, cy, u(8), 'bold', '#000', 'center');
-  cy -= u(11);
+  const TOP_MARGIN = u(9);
+  const ASCENT = 0.74;
+  let cy = H - TOP_MARGIN - fit.size * ASCENT;
+  const nameLines = fit.fits ? [collegeName] : wrapCanvasText(d, collegeName, fit.size, 'bold', nameMaxWidth, 2);
+  nameLines.forEach((line) => {
+    d.text(line, W / 2, cy, fit.size, 'bold', '#000', 'center');
+    cy -= fit.size * 1.25;
+  });
+  cy -= u(3);
+
   if (collegeInfo?.telephone) {
-    d.text(`TEL : ${collegeInfo.telephone}`, W / 2, cy, u(6.5), 'bold', '#E31C24', 'center');
+    d.text(`TEL : ${collegeInfo.telephone}`, W / 2, cy, u(6.5), 'normal', '#000', 'center');
     cy -= u(11);
   }
   d.text(`CARTE D'IDENTITE SCOLAIRE : ${year}`, W / 2, cy, u(6.5), 'bold', '#000', 'center');
-  cy -= u(13);
+  cy -= u(16);
 
   const rightX = W * 0.42;
   const rightW = W * 0.58 - P;
   d.text('LE DIRECTEUR', rightX + rightW / 2, cy, u(6), 'bold', '#000', 'center');
 
-  const sigBoxW = u(70);
+  const sigBoxW = u(72);
   const sigBoxH = u(24);
   const sigX = rightX + (rightW - sigBoxW) / 2;
-  const sigY = cy - u(6) - sigBoxH;
+  const sigAreaTop = cy - u(9);
+  const sigY = sigAreaTop - sigBoxH;
 
   if (signImg) {
     const { w, h } = fitContain(signImg.width, signImg.height, sigBoxW, sigBoxH);
     d.image(signImg, sigX + (sigBoxW - w) / 2, sigY + (sigBoxH - h) / 2, w, h);
-  } else if (collegeInfo?.directeur_nom) {
-    ctx.font = `italic ${u(6)}px Arial, Helvetica, sans-serif`;
-    ctx.fillStyle = '#E31C24';
-    ctx.textAlign = 'center';
-    ctx.fillText(sanitize(collegeInfo.directeur_nom), sigX + sigBoxW / 2, H - (sigY + sigBoxH / 2));
+  }
+  // sinon : zone laissee vierge pour une signature manuscrite
+
+  const nameY = sigY - u(8);
+  const directorName = sanitize(collegeInfo?.directeur_nom || '');
+  if (directorName) {
+    const dirSize = u(6.5);
+    const dirW = d.measure(directorName, dirSize, 'bold');
+    const nameCenterX = sigX + sigBoxW / 2;
+    d.text(directorName, nameCenterX, nameY, dirSize, 'bold', '#000', 'center');
+    d.line(nameCenterX - dirW / 2, nameY - u(2), nameCenterX + dirW / 2, nameY - u(2), '#000', Math.max(1, u(0.5)));
   }
 
-  const seg = sigBoxW / 3;
-  d.rect(sigX, sigY - u(7), seg, u(4.5), '#00873E');
-  d.rect(sigX + seg, sigY - u(7), seg, u(4.5), '#FCD900');
-  d.rect(sigX + seg * 2, sigY - u(7), seg, u(4.5), '#E31C24');
+  // ---- Bande tricolore centree sur toute la largeur de la carte
+  const bandW = u(85);
+  const bandX = (W - bandW) / 2;
+  const seg = bandW / 3;
+  d.rect(bandX, u(8), seg, u(4.5), '#00873E');
+  d.rect(bandX + seg, u(8), seg, u(4.5), '#FCD900');
+  d.rect(bandX + seg * 2, u(8), seg, u(4.5), '#E31C24');
 
-  const qrSize = u(38);
+  const qrSize = u(28);
   const qrX = u(14);
   const qrY = (H - qrSize) / 2 - u(6);
   if (qrImg) d.image(qrImg, qrX, qrY, qrSize, qrSize);
@@ -859,7 +953,7 @@ const appendClassBrouillonPages = async (pdfDoc, font, fontBold, students, class
         nom: student.nom,
         prenom: student.prenom,
         classe: classInfo?.code || '',
-        date_naissance: student.date_naissance || '',
+        date_naissance: formatDateFr(student.date_naissance),
         lieu_naissance: student.lieu_naissance || '',
         nationalite: student.nationalite || '',
         adresse: student.adresse || '',

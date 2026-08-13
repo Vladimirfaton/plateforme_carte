@@ -1,8 +1,7 @@
 import { College } from '../models/College.js';
 import { Class } from '../models/Class.js';
 import logger from '../config/logger.js';
-import path from 'path';
-import fs from 'fs/promises';
+import { uploadBuffer, deleteByPublicUrl } from '../utils/storage.js';
 
 export const createCollege = async (req, res) => {
   try {
@@ -107,13 +106,8 @@ export const deleteCollege = async (req, res) => {
       return res.status(404).json({ error: 'Collège non trouvé' });
     }
 
-    // Supprimer signature si elle existe
     if (college.signature_path) {
-      try {
-        await fs.unlink(college.signature_path);
-      } catch (err) {
-        logger.warn(`Could not delete signature file: ${college.signature_path}`);
-      }
+      await deleteByPublicUrl(college.signature_path);
     }
 
     await College.delete(id);
@@ -138,17 +132,13 @@ export const uploadSignature = async (req, res) => {
       return res.status(404).json({ error: 'Collège non trouvé' });
     }
 
-    // Supprimer ancienne signature si elle existe
+    const newSignatureUrl = await uploadBuffer('signatures', req.file);
+
     if (college.signature_path) {
-      try {
-        await fs.unlink(college.signature_path);
-      } catch (err) {
-        logger.warn(`Could not delete old signature: ${college.signature_path}`);
-      }
+      await deleteByPublicUrl(college.signature_path);
     }
 
-    const signaturePath = req.file.path;
-    const updatedCollege = await College.uploadSignature(id, signaturePath);
+    const updatedCollege = await College.uploadSignature(id, newSignatureUrl);
 
     logger.info(`Signature uploaded for college: ${id}`);
     res.json(updatedCollege);
@@ -179,5 +169,151 @@ export const getCollegeStats = async (req, res) => {
   } catch (error) {
     logger.error(`Error fetching college stats: ${error.message}`);
     res.status(500).json({ error: 'Erreur lors de la récupération des statistiques' });
+  }
+};
+
+// ============================================================================
+// PAGE PUBLIQUE AFFICHEE AU SCAN DU QR CODE (verso de la carte d'identite scolaire)
+// Pas d'authentification : cette page doit etre consultable par quiconque scanne
+// une carte retrouvee (parent, bonne volonte, forces de l'ordre, etc.)
+// ============================================================================
+
+const escapeHtml = (value) =>
+  (value ?? '')
+    .toString()
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+// Meme regle que cote frontend (annee scolaire demarre en septembre)
+const getSchoolYear = (date = new Date()) => {
+  const y = date.getFullYear();
+  return date.getMonth() + 1 >= 9 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+};
+
+const cardInfoPageLayout = ({ title, body }) => `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${title}</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 20px;
+    background: #f7faf8;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, Helvetica, sans-serif;
+    color: #1e293b;
+    display: flex; justify-content: center;
+  }
+  .card {
+    width: 100%; max-width: 420px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 28px 24px;
+    text-align: center;
+  }
+  .college-nom {
+    font-size: 20px; font-weight: 700; color: #0f172a;
+    margin: 0 0 4px;
+    line-height: 1.25;
+  }
+  .college-loc {
+    font-size: 13px; color: #64748b; margin: 0 0 20px;
+  }
+  .titre-carte {
+    font-size: 13px; font-weight: 700; letter-spacing: .02em;
+    color: #059669; text-transform: uppercase;
+    margin: 0 0 20px;
+  }
+  .message {
+    font-size: 15px; line-height: 1.55; color: #334155;
+    margin: 0 0 18px;
+  }
+  .contact-box {
+    background: #f0fdf4; border: 1px solid #bbf7d0;
+    border-radius: 10px; padding: 14px 16px; margin: 0 0 20px;
+  }
+  .contact-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+    color: #059669; font-weight: 700; margin: 0 0 4px;
+  }
+  .contact-value {
+    font-size: 17px; font-weight: 700; color: #0f172a;
+  }
+  .bande { display: flex; height: 5px; border-radius: 3px; overflow: hidden; margin: 0 0 16px; }
+  .bande div { flex: 1; }
+  .footer { font-size: 11px; color: #94a3b8; }
+</style>
+</head>
+<body>
+  <div class="card">
+    ${body}
+    <div class="bande">
+      <div style="background:#00873E"></div>
+      <div style="background:#FCD900"></div>
+      <div style="background:#E31C24"></div>
+    </div>
+    <div class="footer">Réalisé par FVS</div>
+  </div>
+</body>
+</html>`;
+
+const renderCardInfoPage = (college) => {
+  const nom = escapeHtml(college.nom || 'Établissement');
+  const loc = escapeHtml([college.commune, college.departement].filter(Boolean).join(', '));
+  const annee = getSchoolYear();
+  const telephone = college.telephone ? escapeHtml(college.telephone) : null;
+
+  const body = `
+    <p class="college-nom">${nom}</p>
+    ${loc ? `<p class="college-loc">${loc}</p>` : ''}
+    <p class="titre-carte">Carte d'identité scolaire — ${annee}</p>
+    <p class="message">Le titulaire de cette carte est élève au ${nom}.</p>
+    <p class="message" style="margin-bottom:8px;">En cas de perte, merci de bien vouloir contacter :</p>
+    <div class="contact-box">
+      <div class="contact-label">Contact de l'établissement</div>
+      <div class="contact-value">${telephone || 'Voir avec l\u2019établissement'}</div>
+    </div>
+  `;
+
+  return cardInfoPageLayout({ title: `${college.nom || 'Établissement'} — Carte d'identité scolaire`, body });
+};
+
+const renderNotFoundPage = () =>
+  cardInfoPageLayout({
+    title: 'Carte introuvable',
+    body: `
+      <p class="college-nom">Carte non reconnue</p>
+      <p class="message">Cette carte ne correspond à aucun établissement enregistré sur la plateforme FVS.</p>
+    `,
+  });
+
+const renderErrorPage = () =>
+  cardInfoPageLayout({
+    title: 'Erreur',
+    body: `
+      <p class="college-nom">Page indisponible</p>
+      <p class="message">Une erreur est survenue. Merci de réessayer plus tard.</p>
+    `,
+  });
+
+export const getCollegeCardInfoPage = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const college = await College.findById(id);
+
+    if (!college) {
+      res.status(404).set('Content-Type', 'text/html; charset=utf-8').send(renderNotFoundPage());
+      return;
+    }
+
+    res.set('Content-Type', 'text/html; charset=utf-8').send(renderCardInfoPage(college));
+  } catch (error) {
+    logger.error(`Error rendering card info page: ${error.message}`);
+    res.status(500).set('Content-Type', 'text/html; charset=utf-8').send(renderErrorPage());
   }
 };

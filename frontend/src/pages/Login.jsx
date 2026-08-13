@@ -90,7 +90,7 @@ export default function Login({ onLoginSuccess }) {
         </form>
 
         <p className="text-center text-xs text-slate-400 mt-6">
-          Plateforme interne FVS · +229 97 268 741
+          Plateforme interne FVS · +229 01 47 61 14 99
         </p>
       </div>
     </div>

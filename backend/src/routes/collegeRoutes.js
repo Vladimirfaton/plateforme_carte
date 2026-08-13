@@ -1,7 +1,5 @@
 import express from 'express';
 import multer from 'multer';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import {
   createCollege,
   getAllColleges,
@@ -11,14 +9,16 @@ import {
   deleteCollege,
   uploadSignature,
   getCollegeStats,
+  getCollegeCardInfoPage,
 } from '../controllers/collegeController.js';
 import { authenticate } from '../middleware/auth.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = express.Router();
 
+// Signature : en memoire (buffer) -> envoyee vers Supabase Storage dans le controller,
+// jamais ecrite sur le disque du serveur (voir utils/storage.js).
 const signatureUpload = multer({
-  dest: path.join(__dirname, '../../uploads/signatures'),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (['image/png', 'image/jpeg', 'image/jpg'].includes(file.mimetype)) {
@@ -28,6 +28,10 @@ const signatureUpload = multer({
     }
   },
 });
+
+// Page publique affichee au scan du QR code (verso de la carte) — PAS d'authentification :
+// doit rester consultable par quiconque scanne une carte perdue/retrouvee.
+router.get('/:id/carte-info', getCollegeCardInfoPage);
 
 router.get('/', authenticate, getAllColleges);
 router.get('/commune', authenticate, getCollegesByCommune);

@@ -21,8 +21,10 @@ import { authenticate } from '../middleware/auth.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = express.Router();
 
+// Photos : en memoire (buffer) -> envoyees vers Supabase Storage dans le controller,
+// jamais ecrites sur le disque du serveur (voir utils/storage.js).
 const photoUpload = multer({
-  dest: path.join(__dirname, '../../uploads/photos'),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (['image/png', 'image/jpeg', 'image/jpg'].includes(file.mimetype)) cb(null, true);
@@ -30,6 +32,8 @@ const photoUpload = multer({
   },
 });
 
+// Fichier Excel : usage transitoire (lu puis jete dans le meme cycle de requete),
+// pas de besoin de persistance -> reste sur disque local, inchange.
 const excelUpload = multer({
   dest: path.join(__dirname, '../../uploads/excel'),
   limits: { fileSize: 20 * 1024 * 1024 },

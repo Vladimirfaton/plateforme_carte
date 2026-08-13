@@ -9,7 +9,7 @@ import api, { collegeAPI, classAPI, studentAPI, importAPI, FILE_BASE_URL } from 
 import {
   generateBrouillonPDF, generateCollegeBrouillonPDF,
   generateFinalCardsPDF, generateSingleCardPDF, generateCardImages,
-  printFinalCards, getSchoolYear, DEFAULT_CARD_MM,
+  printFinalCards, getSchoolYear, DEFAULT_CARD_MM, wrapText, fitTitleSize,
 } from '../utils/pdfUtils';
 
 const NIVEAU_ORDRE = ['6ème', '5ème', '4ème', '3ème', '2nde', '1ère', 'Tle', 'Terminale'];
@@ -31,11 +31,19 @@ const trierClasses = (list) =>
     return (a.serie || '').localeCompare(b.serie || '', 'fr', { numeric: true });
   });
 
-const photoUrl = (path) =>
-  path ? `${FILE_BASE_URL}/uploads/photos/${path.split(/[\\/]/).pop()}` : null;
+// Depuis la migration vers Supabase Storage, photo_path/signature_path contiennent
+// deja l'URL publique complete -> on l'utilise telle quelle. Les anciens enregistrements
+// (avant migration) contiennent encore un chemin local -> on reconstruit /uploads/...
+// comme avant, pour rester compatible avec les donnees existantes.
+const resolveFileUrl = (value, folder) => {
+  if (!value) return null;
+  if (/^https?:\/\//i.test(value)) return value;
+  return `${FILE_BASE_URL}/uploads/${folder}/${value.split(/[\\/]/).pop()}`;
+};
 
-const signatureUrl = (path) =>
-  path ? `${FILE_BASE_URL}/uploads/signatures/${path.split(/[\\/]/).pop()}` : null;
+const photoUrl = (path) => resolveFileUrl(path, 'photos');
+
+const signatureUrl = (path) => resolveFileUrl(path, 'signatures');
 
 export default function Dashboard({ onLogout }) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1147,7 +1155,7 @@ function ElevesSection({ classId, students, onRefresh }) {
                       <td className="px-4 py-3 text-slate-700">{s.prenom}</td>
                       <td className="px-4 py-3 text-slate-600">{s.sexe}</td>
                       <td className="px-4 py-3 text-slate-600">
-                        {s.date_naissance || '—'}{s.lieu_naissance ? ` · ${s.lieu_naissance}` : ''}
+                        {formatDateFr(s.date_naissance) || '—'}{s.lieu_naissance ? ` · ${s.lieu_naissance}` : ''}
                       </td>
                       <td className="px-4 py-3 text-slate-600">{s.adresse || '—'}</td>
                       <td className="px-4 py-3">
@@ -1449,7 +1457,7 @@ function BrouillonSection({ cls, students, collegeInfo, onRefresh }) {
                 <div><span className="text-xs text-slate-400">Nom</span><div className="text-slate-700">{s.nom}</div></div>
                 <div><span className="text-xs text-slate-400">Prénom</span><div className="text-slate-700">{s.prenom}</div></div>
                 <div><span className="text-xs text-slate-400">Sexe</span><div className="text-slate-700">{s.sexe}</div></div>
-                <div><span className="text-xs text-slate-400">Date et lieu de naissance</span><div className="text-slate-700">{s.date_naissance || '—'} {s.lieu_naissance ? `· ${s.lieu_naissance}` : ''}</div></div>
+                <div><span className="text-xs text-slate-400">Date et lieu de naissance</span><div className="text-slate-700">{formatDateFr(s.date_naissance) || '—'} {s.lieu_naissance ? `· ${s.lieu_naissance}` : ''}</div></div>
                 <div><span className="text-xs text-slate-400">Nationalité</span><div className="text-slate-700">{s.nationalite || '—'}</div></div>
                 <div className="col-span-2"><span className="text-xs text-slate-400">Contact parent</span><div className="text-slate-700">{s.adresse || '—'}</div></div>
               </div>
@@ -1522,6 +1530,15 @@ const formatSexe = (s) => {
   return s || '';
 };
 
+// L'API renvoie la date au format YYYY-MM-DD -> affichage jj/mm/aaaa sur la carte
+const formatDateFr = (value) => {
+  if (!value) return '';
+  const str = value.toString().trim();
+  const m = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  return str;
+};
+
 function Tricolor({ left, top, width, height }) {
   const seg = width / 3;
   return (
@@ -1547,7 +1564,7 @@ function RectoPreview({ student, cls, college, year }) {
   const rows = [
     ['Nom :', student?.nom || ''],
     ['Prénom(s) :', student?.prenom || ''],
-    ['Né(e) le :', `${student?.date_naissance || ''}${student?.lieu_naissance ? `   à   ${student.lieu_naissance}` : ''}`],
+    ['Né(e) le :', `${formatDateFr(student?.date_naissance)}${student?.lieu_naissance ? `   à   ${student.lieu_naissance}` : ''}`],
     ['Sexe :', formatSexe(student?.sexe)],
     ['Nationalité :', student?.nationalite || ''],
     ['Adresse :', student?.adresse || ''],
@@ -1627,14 +1644,46 @@ function RectoPreview({ student, cls, college, year }) {
   );
 }
 
+// Mesure de texte pour calibrer dynamiquement la police du nom de l'établissement
+// dans l'aperçu (canvas caché, réutilisé entre les rendus).
+let _measureCanvas = null;
+const measureTextPx = (text, sizePx, weight = 'bold') => {
+  if (!_measureCanvas) _measureCanvas = document.createElement('canvas');
+  const c = _measureCanvas.getContext('2d');
+  c.font = `${weight} ${sizePx}px Arial, Helvetica, sans-serif`;
+  return c.measureText(text || '').width;
+};
+const previewMeasurer = { widthOfTextAtSize: (t, sz) => measureTextPx(t, sz, 'bold') };
+
 function VersoPreview({ college, year, qrDataUrl }) {
+  const nameText = (college?.nom || '').toUpperCase();
+  const P = u(6);
+  const NAME_MIN = u(8);
+  const NAME_MAX = u(15);
+  const nameMaxWidth = PREVIEW_W - P * 2;
+  const fit = fitTitleSize(
+    (t, sz) => measureTextPx(t, sz, 'bold'),
+    nameText, PREVIEW_W * 0.7, nameMaxWidth, NAME_MIN, NAME_MAX
+  );
+  const nameLines = fit.fits ? [nameText] : wrapText(previewMeasurer, nameText, fit.size, nameMaxWidth, 2);
+
+  let cursor = u(6);
+  nameLines.forEach(() => { cursor += fit.size * 1.25; });
+  cursor += u(3);
+  if (college?.telephone) cursor += u(11);
+  cursor += u(16);
+
+  const labelTop = cursor;
   const rightX = PREVIEW_W * 0.42;
   const rightW = PREVIEW_W * 0.58 - u(6);
-  const sigBoxW = u(70);
+  const sigBoxW = u(72);
   const sigX = rightX + (rightW - sigBoxW) / 2;
-  const sigTop = u(64);
+  const sigAreaTop = labelTop + u(9);
   const sigBoxH = u(24);
-  const qrSize = u(38);
+  const nameTop = sigAreaTop + sigBoxH + u(5);
+  const bandW = u(85);
+  const bandTop = PREVIEW_H - u(12.5);
+  const qrSize = u(28);
 
   return (
     <div
@@ -1644,15 +1693,12 @@ function VersoPreview({ college, year, qrDataUrl }) {
         fontFamily: 'Arial, Helvetica, sans-serif', color: '#000',
       }}
     >
-      <div style={{ position: 'absolute', right: u(6), top: u(4), textAlign: 'right', color: '#DCE0DE' }}>
-        <div style={{ fontSize: u(9), fontWeight: 700 }}>FVS</div>
-        <div style={{ fontSize: u(3.8), fontStyle: 'italic' }}>Réalisé par FVS</div>
-      </div>
-
-      <div style={{ position: 'absolute', left: 0, top: u(13), width: PREVIEW_W, textAlign: 'center' }}>
-        <div style={{ fontSize: u(8), fontWeight: 700 }}>{(college?.nom || '').toUpperCase()}</div>
+      <div style={{ position: 'absolute', left: 0, top: u(6), width: PREVIEW_W, textAlign: 'center' }}>
+        {nameLines.map((line, i) => (
+          <div key={i} style={{ fontSize: fit.size, fontWeight: 700, lineHeight: 1.2 }}>{line}</div>
+        ))}
         {college?.telephone && (
-          <div style={{ fontSize: u(6.5), fontWeight: 700, color: '#E31C24', marginTop: u(4) }}>
+          <div style={{ fontSize: u(6.5), marginTop: u(4) }}>
             TEL : {college.telephone}
           </div>
         )}
@@ -1662,27 +1708,35 @@ function VersoPreview({ college, year, qrDataUrl }) {
       </div>
 
       <div style={{
-        position: 'absolute', left: rightX, top: sigTop - u(10), width: rightW,
+        position: 'absolute', left: rightX, top: labelTop, width: rightW,
         textAlign: 'center', fontSize: u(6), fontWeight: 700,
       }}>
         LE DIRECTEUR
       </div>
 
+      {/* Zone vierge réservée à la signature manuscrite ou à l'image uploadée */}
       <div style={{
-        position: 'absolute', left: sigX, top: sigTop, width: sigBoxW, height: sigBoxH,
+        position: 'absolute', left: sigX, top: sigAreaTop, width: sigBoxW, height: sigBoxH,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        {college?.signature_path ? (
+        {college?.signature_path && (
           <img src={signatureUrl(college.signature_path)} alt=""
             style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-        ) : (
-          <span style={{ fontSize: u(6), fontStyle: 'italic', color: '#E31C24' }}>
-            {college?.directeur_nom || ''}
-          </span>
         )}
       </div>
 
-      <Tricolor left={sigX} top={sigTop + sigBoxH + u(2)} width={sigBoxW} height={u(4.5)} />
+      {college?.directeur_nom && (
+        <div style={{
+          position: 'absolute', left: rightX, top: nameTop, width: rightW,
+          textAlign: 'center', fontSize: u(6.5), fontWeight: 700,
+        }}>
+          <span style={{ borderBottom: '1px solid #000', paddingBottom: u(1) }}>
+            {college.directeur_nom}
+          </span>
+        </div>
+      )}
+
+      <Tricolor left={(PREVIEW_W - bandW) / 2} top={bandTop} width={bandW} height={u(4.5)} />
 
       <div style={{
         position: 'absolute', left: u(14), top: (PREVIEW_H - qrSize) / 2 + u(6),
