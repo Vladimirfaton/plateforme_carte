@@ -120,6 +120,15 @@ export default function Dashboard({ onLogout }) {
     }
   };
 
+  const refreshDashboardStats = async () => {
+    try {
+      const r = await collegeAPI.getAll();
+      setAllColleges(r.data || []);
+    } catch {
+      setAllColleges([]);
+    }
+  };
+
   const filteredColleges = useMemo(() => {
     return allColleges.filter(c =>
       (!selectedDept || c.departement === selectedDept) &&
@@ -142,6 +151,7 @@ export default function Dashboard({ onLogout }) {
     try {
       const res = await classAPI.getByCollege(college.id);
       setClasses(trierClasses(res.data || []));
+      await refreshDashboardStats();
     } catch {
       setClasses([]);
     } finally {
@@ -168,6 +178,7 @@ export default function Dashboard({ onLogout }) {
     try {
       const r = await studentAPI.getByClass(activeClass.id);
       setStudents(r.data?.students || r.data || []);
+      await refreshDashboardStats();
     } catch {
       // silencieux
     }
