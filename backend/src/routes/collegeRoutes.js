@@ -10,8 +10,10 @@ import {
   uploadSignature,
   getCollegeStats,
   getCollegeCardInfoPage,
+  createManagementAccounts,
+  getManagementAccounts,
 } from '../controllers/collegeController.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, authorize } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -38,10 +40,14 @@ router.get('/commune', authenticate, getCollegesByCommune);
 router.get('/:id/stats', authenticate, getCollegeStats);
 router.get('/:id', authenticate, getCollegeById);
 
-router.post('/', authenticate, createCollege);
-router.put('/:id', authenticate, updateCollege);
-router.delete('/:id', authenticate, deleteCollege);
+router.post('/', authenticate, authorize(['admin']), createCollege);
+router.put('/:id', authenticate, authorize(['admin']), updateCollege);
+router.delete('/:id', authenticate, authorize(['admin']), deleteCollege);
 
-router.post('/:id/signature', authenticate, signatureUpload.single('signature'), uploadSignature);
+router.post('/:id/signature', authenticate, authorize(['admin']), signatureUpload.single('signature'), uploadSignature);
+
+// Comptes de gestion (directeur/secrétaire) — création réservée à l'admin
+router.post('/:id/comptes-gestion', authenticate, authorize(['admin']), createManagementAccounts);
+router.get('/:id/comptes-gestion', authenticate, authorize(['admin']), getManagementAccounts);
 
 export default router;

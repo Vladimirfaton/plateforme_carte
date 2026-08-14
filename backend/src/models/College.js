@@ -6,6 +6,7 @@ export class College {
     const {
       nom, commune, departement, directeur_nom,
       directeur_contact, email, telephone,
+      secretaire_nom, secretaire_prenom, secretaire_telephone, secretaire_email,
     } = data;
 
     const id = uuidv4();
@@ -14,10 +15,15 @@ export class College {
     const result = await query(
       `INSERT INTO colleges (
         id, nom, commune, departement, directeur_nom, directeur_contact,
-        email, telephone, created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        email, telephone, secretaire_nom, secretaire_prenom, secretaire_telephone,
+        secretaire_email, created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
-      [id, nom, commune, departement, directeur_nom, directeur_contact, email, telephone, createdAt]
+      [
+        id, nom, commune, departement, directeur_nom, directeur_contact, email, telephone,
+        secretaire_nom || null, secretaire_prenom || null, secretaire_telephone || null,
+        secretaire_email || null, createdAt,
+      ]
     );
 
     return result.rows[0];
@@ -36,6 +42,7 @@ export class College {
     );
     return result.rows;
   }
+
   static async findById(id) {
     const result = await query('SELECT * FROM colleges WHERE id = $1', [id]);
     return result.rows[0];
@@ -57,16 +64,32 @@ export class College {
     return result.rows;
   }
 
+  // COALESCE : permet des mises à jour partielles (ex: uniquement les champs
+  // secrétaire depuis createManagementAccounts) sans écraser le reste.
   static async update(id, data) {
-    const { nom, directeur_nom, directeur_contact, email, telephone } = data;
+    const {
+      nom, directeur_nom, directeur_contact, email, telephone,
+      secretaire_nom, secretaire_prenom, secretaire_telephone, secretaire_email,
+    } = data;
 
     const result = await query(
       `UPDATE colleges
-       SET nom = $1, directeur_nom = $2, directeur_contact = $3,
-           email = $4, telephone = $5, updated_at = NOW()
-       WHERE id = $6
+       SET nom = COALESCE($1, nom),
+           directeur_nom = COALESCE($2, directeur_nom),
+           directeur_contact = COALESCE($3, directeur_contact),
+           email = COALESCE($4, email),
+           telephone = COALESCE($5, telephone),
+           secretaire_nom = COALESCE($6, secretaire_nom),
+           secretaire_prenom = COALESCE($7, secretaire_prenom),
+           secretaire_telephone = COALESCE($8, secretaire_telephone),
+           secretaire_email = COALESCE($9, secretaire_email),
+           updated_at = NOW()
+       WHERE id = $10
        RETURNING *`,
-      [nom, directeur_nom, directeur_contact, email, telephone, id]
+      [
+        nom, directeur_nom, directeur_contact, email, telephone,
+        secretaire_nom, secretaire_prenom, secretaire_telephone, secretaire_email, id,
+      ]
     );
 
     return result.rows[0];

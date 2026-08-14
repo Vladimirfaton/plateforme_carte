@@ -1,7 +1,11 @@
 import { College } from '../models/College.js';
 import { Class } from '../models/Class.js';
+import { User } from '../models/User.js';
+import { AccessKey } from '../models/AccessKey.js';
 import logger from '../config/logger.js';
 import { uploadBuffer, deleteByPublicUrl } from '../utils/storage.js';
+import { splitFullName, generateUsernameSuggestion } from '../utils/username.js';
+import { sendActivationEmail } from '../utils/email.js';
 
 export const createCollege = async (req, res) => {
   try {
@@ -13,6 +17,10 @@ export const createCollege = async (req, res) => {
       directeur_contact,
       email,
       telephone,
+      secretaire_nom,
+      secretaire_prenom,
+      secretaire_telephone,
+      secretaire_email,
     } = req.body;
 
     if (!nom || !commune || !departement) {
@@ -27,6 +35,10 @@ export const createCollege = async (req, res) => {
       directeur_contact,
       email,
       telephone,
+      secretaire_nom,
+      secretaire_prenom,
+      secretaire_telephone,
+      secretaire_email,
     });
 
     logger.info(`College created: ${college.id} - ${nom}`);
@@ -169,6 +181,116 @@ export const getCollegeStats = async (req, res) => {
   } catch (error) {
     logger.error(`Error fetching college stats: ${error.message}`);
     res.status(500).json({ error: 'Erreur lors de la récupération des statistiques' });
+  }
+};
+
+// ============================================================================
+// COMPTES DE GESTION (directeur / secrétaire) — écoles "prêtes à payer"
+// ============================================================================
+
+// POST /:id/comptes-gestion — admin sélectionne le collège, déclenche la création
+// des 2 comptes. Si les infos secrétaire ne sont pas encore sur le collège,
+// elles doivent être fournies dans le body de cette requête (formulaire "infos
+// supplémentaires" côté frontend).
+export const createManagementAccounts = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { secretaire_nom, secretaire_prenom, secretaire_telephone, secretaire_email } = req.body;
+
+    const college = await College.findById(id);
+    if (!college) {
+      return res.status(404).json({ error: 'Collège non trouvé' });
+    }
+
+    if (!college.directeur_nom || !college.directeur_contact || !college.email) {
+      return res.status(400).json({
+        error: 'Informations du directeur incomplètes sur ce collège (nom, contact et email requis)',
+      });
+    }
+
+    const existingAccounts = await User.findByCollege(id);
+    if (existingAccounts.length > 0) {
+      return res.status(409).json({ error: 'Des comptes de gestion existent déjà pour ce collège' });
+    }
+
+    let secretaireInfo = {
+      nom: college.secretaire_nom,
+      prenom: college.secretaire_prenom,
+      telephone: college.secretaire_telephone,
+      email: college.secretaire_email,
+    };
+
+    if (!secretaireInfo.nom || !secretaireInfo.prenom || !secretaireInfo.email) {
+      if (!secretaire_nom || !secretaire_prenom || !secretaire_email) {
+        return res.status(400).json({
+          error: 'Informations de la secrétaire requises (nom, prénom, email)',
+          code: 'SECRETAIRE_INFO_REQUIRED',
+        });
+      }
+      await College.update(id, { secretaire_nom, secretaire_prenom, secretaire_telephone, secretaire_email });
+      secretaireInfo = {
+        nom: secretaire_nom,
+        prenom: secretaire_prenom,
+        telephone: secretaire_telephone,
+        email: secretaire_email,
+      };
+    }
+
+    const { prenom: directeurPrenom, nom: directeurNom } = splitFullName(college.directeur_nom);
+
+    const directeurAccount = await User.createManagementAccount({
+      collegeId: id,
+      role: 'directeur',
+      nom: directeurNom,
+      prenom: directeurPrenom,
+      telephone: college.directeur_contact,
+      email: college.email,
+    });
+
+    const secretaireAccount = await User.createManagementAccount({
+      collegeId: id,
+      role: 'secretaire',
+      nom: secretaireInfo.nom,
+      prenom: secretaireInfo.prenom,
+      telephone: secretaireInfo.telephone,
+      email: secretaireInfo.email,
+    });
+
+    const { plainKey } = await AccessKey.createPending(id, 'free');
+    const activationBaseUrl = `${process.env.FRONTEND_URL || ''}/activation-compte`;
+
+    await sendActivationEmail(directeurAccount.email, {
+      role: 'directeur',
+      collegeName: college.nom,
+      suggestedUsername: generateUsernameSuggestion(directeurPrenom, directeurNom),
+      accessKey: plainKey,
+      activationUrl: `${activationBaseUrl}?email=${encodeURIComponent(directeurAccount.email)}`,
+    });
+
+    await sendActivationEmail(secretaireAccount.email, {
+      role: 'secretaire',
+      collegeName: college.nom,
+      suggestedUsername: generateUsernameSuggestion(secretaireInfo.prenom, secretaireInfo.nom),
+      accessKey: plainKey,
+      activationUrl: `${activationBaseUrl}?email=${encodeURIComponent(secretaireAccount.email)}`,
+    });
+
+    logger.info(`Management accounts created for college ${id}`);
+    res.status(201).json({ directeur: directeurAccount, secretaire: secretaireAccount });
+  } catch (error) {
+    logger.error(`Error creating management accounts: ${error.message}`);
+    res.status(500).json({ error: 'Erreur lors de la création des comptes de gestion' });
+  }
+};
+
+export const getManagementAccounts = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const accounts = await User.findByCollege(id);
+    res.json(accounts);
+  } catch (error) {
+    logger.error(`Error fetching management accounts: ${error.message}`);
+    res.status(500).json({ error: 'Erreur lors de la récupération des comptes' });
   }
 };
 

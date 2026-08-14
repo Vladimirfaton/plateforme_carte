@@ -9,12 +9,22 @@ const createTables = async () => {
       CREATE TABLE IF NOT EXISTS users (
         id UUID PRIMARY KEY,
         email VARCHAR(255) UNIQUE NOT NULL,
-        password_hash VARCHAR(255) NOT NULL,
+        password_hash VARCHAR(255),
         role VARCHAR(50) DEFAULT 'admin',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // --- Migration additive users : gestion d'écoles (directeur/secrétaire) ---
+    await pool.query('ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS college_id UUID REFERENCES colleges(id) ON DELETE CASCADE');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(100) UNIQUE');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS nom VARCHAR(255)');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS prenom VARCHAR(255)');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS telephone VARCHAR(20)');
+    // status: active (admin par défaut) | pending_activation | expired
+    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'active'");
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS otps (
@@ -42,13 +52,14 @@ const createTables = async () => {
       )
     `);
 
-    await pool.query('DROP TABLE IF EXISTS brouillons_cartes CASCADE');
-    await pool.query('DROP TABLE IF EXISTS eleves CASCADE');
-    await pool.query('DROP TABLE IF EXISTS groupes CASCADE');
-    await pool.query('DROP TABLE IF EXISTS classes CASCADE');
+    // --- Migration additive colleges : infos secrétaire (facultatives à la création) ---
+    await pool.query('ALTER TABLE colleges ADD COLUMN IF NOT EXISTS secretaire_nom VARCHAR(255)');
+    await pool.query('ALTER TABLE colleges ADD COLUMN IF NOT EXISTS secretaire_prenom VARCHAR(255)');
+    await pool.query('ALTER TABLE colleges ADD COLUMN IF NOT EXISTS secretaire_telephone VARCHAR(20)');
+    await pool.query('ALTER TABLE colleges ADD COLUMN IF NOT EXISTS secretaire_email VARCHAR(255)');
 
     await pool.query(`
-      CREATE TABLE classes (
+      CREATE TABLE IF NOT EXISTS classes (
         id UUID PRIMARY KEY,
         college_id UUID NOT NULL REFERENCES colleges(id) ON DELETE CASCADE,
         niveau VARCHAR(50) NOT NULL,
@@ -61,7 +72,7 @@ const createTables = async () => {
     `);
 
     await pool.query(`
-      CREATE TABLE eleves (
+      CREATE TABLE IF NOT EXISTS eleves (
         id UUID PRIMARY KEY,
         classe_id UUID NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
         matricule VARCHAR(50) UNIQUE NOT NULL,
@@ -80,7 +91,7 @@ const createTables = async () => {
     `);
 
     await pool.query(`
-      CREATE TABLE brouillons_cartes (
+      CREATE TABLE IF NOT EXISTS brouillons_cartes (
         id UUID PRIMARY KEY,
         college_id UUID NOT NULL REFERENCES colleges(id) ON DELETE CASCADE,
         classe_id UUID NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
@@ -93,10 +104,39 @@ const createTables = async () => {
       )
     `);
 
+    // --- Nouvelle table : clés d'accès (partagées directeur+secrétaire d'un même collège) ---
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS access_keys (
+        id UUID PRIMARY KEY,
+        college_id UUID NOT NULL REFERENCES colleges(id) ON DELETE CASCADE,
+        key_hash VARCHAR(255) NOT NULL,
+        type VARCHAR(20) NOT NULL DEFAULT 'free',
+        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+        issued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        activated_at TIMESTAMP,
+        expires_at TIMESTAMP
+      )
+    `);
+
+    // --- Nouvelle table : observations (retour secrétaire/directeur après vérification élèves) ---
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS observations (
+        id UUID PRIMARY KEY,
+        classe_id UUID NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+        auteur_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        auteur_role VARCHAR(50) NOT NULL,
+        contenu TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     await pool.query('CREATE INDEX IF NOT EXISTS idx_colleges_commune ON colleges(commune, departement)');
     await pool.query('CREATE INDEX IF NOT EXISTS idx_classes_college ON classes(college_id)');
     await pool.query('CREATE INDEX IF NOT EXISTS idx_eleves_classe ON eleves(classe_id)');
     await pool.query('CREATE INDEX IF NOT EXISTS idx_eleves_matricule ON eleves(matricule)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_users_college ON users(college_id)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_access_keys_college ON access_keys(college_id)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_observations_classe ON observations(classe_id)');
 
     logger.info('Database setup completed');
   } catch (error) {

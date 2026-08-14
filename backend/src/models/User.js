@@ -6,30 +6,85 @@ export class User {
   static async create(email, password, role = 'admin') {
     const id = uuidv4();
     const hashedPassword = await bcrypt.hash(password, 10);
-    const createdAt = new Date();
 
     const result = await query(
-      `INSERT INTO users (id, email, password_hash, role, created_at) 
-       VALUES ($1, $2, $3, $4, $5) 
+      `INSERT INTO users (id, email, password_hash, role, status, created_at)
+       VALUES ($1, $2, $3, $4, 'active', CURRENT_TIMESTAMP)
        RETURNING id, email, role, created_at`,
-      [id, email, hashedPassword, role, createdAt]
+      [id, email, hashedPassword, role]
     );
 
     return result.rows[0];
   }
 
-  static async findByEmail(email) {
+  // Compte directeur/secrétaire créé par l'admin — pas de mot de passe/username
+  // tant que l'activation (clé d'accès) n'a pas été faite.
+  static async createManagementAccount({ collegeId, role, nom, prenom, telephone, email }) {
+    const id = uuidv4();
     const result = await query(
-      'SELECT * FROM users WHERE email = $1',
-      [email]
+      `INSERT INTO users (id, email, role, college_id, nom, prenom, telephone, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending_activation', CURRENT_TIMESTAMP)
+       RETURNING id, email, role, college_id, nom, prenom, status`,
+      [id, email, role, collegeId, nom, prenom, telephone]
     );
+    return result.rows[0];
+  }
+
+  static async findByEmail(email) {
+    const result = await query('SELECT * FROM users WHERE email = $1', [email]);
+    return result.rows[0];
+  }
+
+  static async findByUsername(username) {
+    const result = await query('SELECT * FROM users WHERE username = $1', [username]);
     return result.rows[0];
   }
 
   static async findById(id) {
     const result = await query(
-      'SELECT id, email, role, created_at FROM users WHERE id = $1',
+      `SELECT id, email, role, college_id, username, nom, prenom, telephone, status, created_at
+       FROM users WHERE id = $1`,
       [id]
+    );
+    return result.rows[0];
+  }
+
+  // Directeur + secrétaire d'un collège donné
+  static async findByCollege(collegeId) {
+    const result = await query(
+      `SELECT id, email, role, username, nom, prenom, telephone, status
+       FROM users WHERE college_id = $1 AND role IN ('directeur', 'secretaire')`,
+      [collegeId]
+    );
+    return result.rows;
+  }
+
+  static async usernameExists(username) {
+    const result = await query('SELECT 1 FROM users WHERE username = $1', [username]);
+    return result.rowCount > 0;
+  }
+
+  // Première activation : définit username + mot de passe, passe le compte à 'active'
+  static async activateAccount(userId, username, password) {
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const result = await query(
+      `UPDATE users
+       SET username = $1, password_hash = $2, status = 'active', updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3
+       RETURNING id, email, role, college_id, username, status`,
+      [username, hashedPassword, userId]
+    );
+    return result.rows[0];
+  }
+
+  // Réactivation après expiration : le mot de passe existant est conservé,
+  // seul le statut repasse à 'active' (appelé après vérification clé + mdp).
+  static async reactivate(userId) {
+    const result = await query(
+      `UPDATE users SET status = 'active', updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1
+       RETURNING id, email, role, college_id, username, status`,
+      [userId]
     );
     return result.rows[0];
   }
