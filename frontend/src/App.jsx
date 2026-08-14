@@ -36,7 +36,7 @@ function App() {
   useEffect(() => {
     // Check if user is authenticated on mount
     const verifyToken = async () => {
-      const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
       if (token) {
         try {
           await axios.get(`${API_URL}/auth/verify`, {
@@ -45,7 +45,7 @@ function App() {
           setIsAuthenticated(true);
         } catch (err) {
           console.error('Token verification failed:', err);
-          localStorage.removeItem('token');
+          sessionStorage.removeItem('token');
           setIsAuthenticated(false);
         }
       }
@@ -56,7 +56,7 @@ function App() {
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
+    sessionStorage.removeItem('token');
     setIsAuthenticated(false);
   };
 

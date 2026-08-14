@@ -40,8 +40,8 @@ export default function OtpVerification({ onLoginSuccess }) {
     try {
       const res = await authAPI.verifyOtp(email, otpCode);
       const { token, user } = res.data;
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(user));
+      sessionStorage.setItem('token', token);
+      sessionStorage.setItem('user', JSON.stringify(user));
       onLoginSuccess?.();
       navigate('/dashboard');
     } catch (err) {
