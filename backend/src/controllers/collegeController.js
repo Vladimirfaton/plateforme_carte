@@ -283,14 +283,15 @@ export const createManagementAccounts = async (req, res) => {
       });
 
       const { plainKey } = await AccessKey.createPending(id, 'free');
-      const activationBaseUrl = `${process.env.FRONTEND_URL || ''}/activation-compte`;
+      const frontendBaseUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
+      const activationBaseUrl = `${frontendBaseUrl}/activation-compte`;
 
       await sendActivationEmail(directeurAccount.email, {
         role: 'directeur',
         collegeName: college.nom,
         suggestedUsername: directeurSuggested,
         accessKey: plainKey,
-        activationUrl: `${activationBaseUrl}?email=${encodeURIComponent(directeurAccount.email)}`,
+        activationUrl: `${activationBaseUrl}?email=${encodeURIComponent(directeurAccount.email)}&key=${encodeURIComponent(plainKey)}`,
       });
 
       await sendActivationEmail(secretaireAccount.email, {
@@ -298,7 +299,7 @@ export const createManagementAccounts = async (req, res) => {
         collegeName: college.nom,
         suggestedUsername: secretaireSuggested,
         accessKey: plainKey,
-        activationUrl: `${activationBaseUrl}?email=${encodeURIComponent(secretaireAccount.email)}`,
+        activationUrl: `${activationBaseUrl}?email=${encodeURIComponent(secretaireAccount.email)}&key=${encodeURIComponent(plainKey)}`,
       });
 
     logger.info(`Management accounts created for college ${id}`);
@@ -317,6 +318,45 @@ export const getManagementAccounts = async (req, res) => {
   } catch (error) {
     logger.error(`Error fetching management accounts: ${error.message}`);
     res.status(500).json({ error: 'Erreur lors de la récupération des comptes' });
+  }
+};
+
+export const resendManagementActivationEmails = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const college = await College.findById(id);
+    if (!college) {
+      return res.status(404).json({ error: 'Collège non trouvé' });
+    }
+
+    const accounts = await User.findByCollege(id);
+    const pendingAccounts = accounts.filter((user) => user.status === 'pending_activation');
+    if (!pendingAccounts.length) {
+      return res.status(400).json({ error: 'Aucun compte en attente d’activation pour ce collège' });
+    }
+
+    const pendingKey = await AccessKey.findPendingByCollege(id);
+    const keyToSend = pendingKey || (await AccessKey.createPending(id, 'free')).plainKey;
+    const frontendBaseUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
+    const activationBaseUrl = `${frontendBaseUrl}/activation-compte`;
+
+    await Promise.all(
+      pendingAccounts.map(async (account) => {
+        await sendActivationEmail(account.email, {
+          role: account.role,
+          collegeName: college.nom,
+          suggestedUsername: account.username || account.prenom ? `${(account.prenom || '').trim()}${(account.nom || '').trim()}`.toLowerCase().replace(/\s+/g, '') : 'utilisateur',
+          accessKey: keyToSend,
+          activationUrl: `${activationBaseUrl}?email=${encodeURIComponent(account.email)}&key=${encodeURIComponent(keyToSend)}`,
+        });
+      })
+    );
+
+    logger.info(`Activation emails resent for college ${id}`);
+    res.json({ sent: pendingAccounts.length, accounts: pendingAccounts.map((a) => ({ id: a.id, email: a.email, role: a.role })) });
+  } catch (error) {
+    logger.error(`Error resending management activation emails: ${error.message}`);
+    res.status(500).json({ error: 'Erreur lors de l’envoi des liens d’activation' });
   }
 };
 

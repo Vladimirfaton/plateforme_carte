@@ -12,6 +12,7 @@ import {
   getCollegeCardInfoPage,
   createManagementAccounts,
   getManagementAccounts,
+  resendManagementActivationEmails,
 } from '../controllers/collegeController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 
@@ -49,5 +50,6 @@ router.post('/:id/signature', authenticate, authorize(['admin']), signatureUploa
 // Comptes de gestion (directeur/secrétaire) — création réservée à l'admin
 router.post('/:id/comptes-gestion', authenticate, authorize(['admin']), createManagementAccounts);
 router.get('/:id/comptes-gestion', authenticate, authorize(['admin']), getManagementAccounts);
+router.post('/:id/comptes-gestion/resend', authenticate, authorize(['admin']), resendManagementActivationEmails);
 
 export default router;

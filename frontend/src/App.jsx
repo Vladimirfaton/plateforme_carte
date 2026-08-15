@@ -159,7 +159,15 @@ function App() {
           element={<ActivationCompte onLoginSuccess={() => setIsAuthenticated(true)} />}
         />
         <Route
+          path="/gestion/activation-compte"
+          element={<ActivationCompte onLoginSuccess={() => setIsAuthenticated(true)} />}
+        />
+        <Route
           path="/reactivation-compte"
+          element={<ReactivationCompte onLoginSuccess={() => setIsAuthenticated(true)} />}
+        />
+        <Route
+          path="/gestion/reactivation-compte"
           element={<ReactivationCompte onLoginSuccess={() => setIsAuthenticated(true)} />}
         />
         <Route

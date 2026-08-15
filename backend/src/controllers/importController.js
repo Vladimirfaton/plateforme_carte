@@ -30,6 +30,24 @@ const toISODate = (value) => {
 
 const cell = (v) => (v == null ? '' : v.toString().trim());
 
+const parseExcelRow = (row) => {
+  const values = Array.isArray(row?.values) ? row.values.slice(1, 9) : [];
+  if (!values.some((value) => value !== null && value !== undefined && String(value).trim() !== '')) {
+    return null;
+  }
+
+  return {
+    matricule: cell(values[0]),
+    nom: cell(values[1]),
+    prenom: cell(values[2]),
+    sexe: cell(values[3]).toUpperCase(),
+    date_naissance: toISODate(values[4]),
+    lieu_naissance: cell(values[5]),
+    nationalite: cell(values[6]),
+    adresse: cell(values[7]),
+  };
+};
+
 export const validateExcelFile = async (req, res) => {
   try {
     if (!req.file) {
@@ -50,19 +68,8 @@ export const validateExcelFile = async (req, res) => {
     worksheet.eachRow((row, index) => {
       if (index === 1) return;
 
-      const v = row.values;
-      if (!v || v.filter(Boolean).length === 0) return;
-
-      const student = {
-        matricule: cell(v[1]),
-        nom: cell(v[2]),
-        prenom: cell(v[3]),
-        sexe: cell(v[4]).toUpperCase(),
-        date_naissance: toISODate(v[5]),
-        lieu_naissance: cell(v[6]),
-        nationalite: cell(v[7]),
-        adresse: cell(v[8]),
-      };
+      const student = parseExcelRow(row);
+      if (!student) return;
 
       const rowErrors = [];
       if (!student.matricule) rowErrors.push(`Ligne ${index}: matricule manquant`);
@@ -109,19 +116,36 @@ export const importStudents = async (req, res) => {
 
     const errors = [];
     const imported = [];
+    const seenInFile = new Set();
 
     for (const s of students) {
+      if (!s || !s.matricule) {
+        errors.push('Une ligne du fichier est incomplète');
+        continue;
+      }
+
+      const normalizedMatricule = s.matricule.trim().toUpperCase();
+      if (seenInFile.has(normalizedMatricule)) {
+        errors.push(`${normalizedMatricule}: matricule en doublon dans le fichier`);
+        continue;
+      }
+      seenInFile.add(normalizedMatricule);
+
       try {
-        const existing = await Student.findByMatricule(s.matricule);
+        const existing = await Student.findByMatricule(normalizedMatricule);
         if (existing) {
-          errors.push(`${s.matricule}: matricule déjà utilisé`);
+          errors.push(`${normalizedMatricule}: matricule déjà utilisé`);
           continue;
         }
 
-        const student = await Student.create(classId, { ...s, photo_path: null });
+        const student = await Student.create(classId, {
+          ...s,
+          matricule: normalizedMatricule,
+          photo_path: null,
+        });
         imported.push(student);
       } catch (err) {
-        errors.push(`${s.matricule}: ${err.message}`);
+        errors.push(`${normalizedMatricule}: ${err.message}`);
       }
     }
 

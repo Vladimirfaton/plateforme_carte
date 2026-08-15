@@ -63,6 +63,7 @@ export const collegeAPI = {
   // Comptes de gestion
   createManagementAccounts: (id, data) => api.post(`/colleges/${id}/comptes-gestion`, data),
   getManagementAccounts: (id) => api.get(`/colleges/${id}/comptes-gestion`),
+  resendManagementActivationEmails: (id) => api.post(`/colleges/${id}/comptes-gestion/resend`),
 };
 
 export const classAPI = {

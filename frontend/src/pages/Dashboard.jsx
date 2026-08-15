@@ -747,6 +747,19 @@ function ClassGrid({ classes, onOpen, collegeId, collegeNom, collegeInfo, onRefr
     }
   };
 
+  const handleResendManagementActivationEmails = async () => {
+    setError('');
+    setCreatingComptes(true);
+    try {
+      const res = await collegeAPI.resendManagementActivationEmails(collegeId);
+      flash(`${res.data.sent} lien(s) d’activation renvoyé(s)`);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Erreur lors du renvoi des liens d’activation');
+    } finally {
+      setCreatingComptes(false);
+    }
+  };
+
   const submitSecretaireModal = (e) => {
     e.preventDefault();
     handleCreateComptes(secretaireModalForm);
@@ -858,6 +871,15 @@ function ClassGrid({ classes, onOpen, collegeId, collegeNom, collegeInfo, onRefr
           >
             {creatingComptes ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
             {creatingComptes ? 'Création...' : 'Créer comptes de gestion'}
+          </button>
+
+          <button
+            onClick={handleResendManagementActivationEmails}
+            disabled={creatingComptes}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:border-slate-300 disabled:opacity-50 text-slate-700 rounded-lg text-sm font-medium cursor-pointer whitespace-nowrap"
+          >
+            {creatingComptes ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+            {creatingComptes ? 'Envoi...' : 'Renvoyer liens'}
           </button>
 
           <button

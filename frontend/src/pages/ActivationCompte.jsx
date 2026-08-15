@@ -6,7 +6,7 @@ import { authAPI } from '../services/api';
 export default function ActivationCompte({ onLoginSuccess }) {
   const [searchParams] = useSearchParams();
   const [email, setEmail] = useState(searchParams.get('email') || '');
-  const [accessKey, setAccessKey] = useState('');
+  const [accessKey, setAccessKey] = useState(searchParams.get('key') || '');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
