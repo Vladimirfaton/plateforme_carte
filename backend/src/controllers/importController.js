@@ -152,14 +152,14 @@ export const downloadTemplate = async (req, res) => {
     worksheet.getRow(1).font = { bold: true };
 
     worksheet.addRow({
-      matricule: 'MAT001',
-      nom: 'HOUNDNJE',
-      prenom: 'Oswell Séwanu',
+      matricule: '001',
+      nom: 'XXXXXXX',
+      prenom: 'AAAAA BBBBBB',
       sexe: 'M',
       date_naissance: '01/02/2009',
       lieu_naissance: 'Cotonou',
       nationalite: 'BENINOISE',
-      adresse: '95961070',
+      adresse: '0156435678',
     });
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

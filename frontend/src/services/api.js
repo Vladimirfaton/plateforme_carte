@@ -35,6 +35,12 @@ export const authAPI = {
   verify: () => api.get('/auth/verify'),
   verifyOtp: (email, otpCode) => api.post('/auth/verify-otp', { email, otpCode }),
   resendOtp: (email) => api.post('/auth/resend-otp', { email }),
+
+  // Comptes de gestion (directeur/secrétaire)
+  loginGestion: (username, password) => api.post('/auth/login-gestion', { username, password }),
+  activateAccount: (data) => api.post('/auth/activation-compte', data),
+  reactivateAccount: (data) => api.post('/auth/reactivation-compte', data),
+  checkUsername: (username) => api.get('/auth/username-disponible', { params: { username } }),
 };
 
 export const collegeAPI = {
@@ -53,6 +59,10 @@ export const collegeAPI = {
     });
   },
   getStats: (id) => api.get(`/colleges/${id}/stats`),
+
+  // Comptes de gestion
+  createManagementAccounts: (id, data) => api.post(`/colleges/${id}/comptes-gestion`, data),
+  getManagementAccounts: (id) => api.get(`/colleges/${id}/comptes-gestion`),
 };
 
 export const classAPI = {
@@ -61,6 +71,9 @@ export const classAPI = {
   create: (collegeId, data) => api.post(`/classes/${collegeId}/classes`, data),
   update: (classId, data) => api.put(`/classes/class/${classId}`, data),
   delete: (classId) => api.delete(`/classes/class/${classId}`),
+  // Observations
+  listObservations: (classId) => api.get(`/classes/class/${classId}/observations`),
+  createObservation: (classId, contenu) => api.post(`/classes/class/${classId}/observations`, { contenu }),
 };
 
 export const studentAPI = {

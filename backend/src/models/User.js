@@ -1,6 +1,7 @@
 import { query } from '../config/database.js';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
+import { generateUsernameSuggestion } from '../utils/username.js';
 
 export class User {
   static async create(email, password, role = 'admin') {
@@ -19,13 +20,13 @@ export class User {
 
   // Compte directeur/secrétaire créé par l'admin — pas de mot de passe/username
   // tant que l'activation (clé d'accès) n'a pas été faite.
-  static async createManagementAccount({ collegeId, role, nom, prenom, telephone, email }) {
+  static async createManagementAccount({ collegeId, role, nom, prenom, telephone, email, username = null }) {
     const id = uuidv4();
     const result = await query(
-      `INSERT INTO users (id, email, role, college_id, nom, prenom, telephone, status, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending_activation', CURRENT_TIMESTAMP)
-       RETURNING id, email, role, college_id, nom, prenom, status`,
-      [id, email, role, collegeId, nom, prenom, telephone]
+      `INSERT INTO users (id, email, role, college_id, nom, prenom, telephone, username, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending_activation', CURRENT_TIMESTAMP)
+       RETURNING id, email, role, college_id, nom, prenom, username, status`,
+      [id, email, role, collegeId, nom, prenom, telephone, username]
     );
     return result.rows[0];
   }
@@ -62,6 +63,20 @@ export class User {
   static async usernameExists(username) {
     const result = await query('SELECT 1 FROM users WHERE username = $1', [username]);
     return result.rowCount > 0;
+  }
+
+  // Propose un nom d'utilisateur unique en ajoutant un suffixe numérique
+  // si nécessaire. Ex: jeandupont, jeandupont1, jeandupont2...
+  static async suggestUniqueUsername(prenom, nom) {
+    const base = generateUsernameSuggestion(prenom || '', nom || '');
+    let username = base;
+    let counter = 1;
+    while (await this.usernameExists(username)) {
+      username = `${base}${counter}`;
+      counter += 1;
+      if (counter > 10000) break; // safety
+    }
+    return username;
   }
 
   // Première activation : définit username + mot de passe, passe le compte à 'active'

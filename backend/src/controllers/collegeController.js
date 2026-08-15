@@ -14,6 +14,7 @@ export const createCollege = async (req, res) => {
       commune,
       departement,
       directeur_nom,
+      directeur_prenom,
       directeur_contact,
       email,
       telephone,
@@ -32,6 +33,7 @@ export const createCollege = async (req, res) => {
       commune,
       departement,
       directeur_nom,
+      directeur_prenom,
       directeur_contact,
       email,
       telephone,
@@ -213,10 +215,17 @@ export const createManagementAccounts = async (req, res) => {
       return res.status(409).json({ error: 'Des comptes de gestion existent déjà pour ce collège' });
     }
 
+    // normaliser / tronquer les numéros pour respecter VARCHAR(20)
+    const sanitizePhone = (p) => {
+      if (!p) return null;
+      const s = p.toString().trim().replace(/[^\d+]/g, '');
+      return s.slice(0, 30);
+    };
+
     let secretaireInfo = {
       nom: college.secretaire_nom,
       prenom: college.secretaire_prenom,
-      telephone: college.secretaire_telephone,
+      telephone: sanitizePhone(college.secretaire_telephone),
       email: college.secretaire_email,
     };
 
@@ -227,53 +236,70 @@ export const createManagementAccounts = async (req, res) => {
           code: 'SECRETAIRE_INFO_REQUIRED',
         });
       }
-      await College.update(id, { secretaire_nom, secretaire_prenom, secretaire_telephone, secretaire_email });
+      await College.update(id, { secretaire_nom, secretaire_prenom, secretaire_telephone: sanitizePhone(secretaire_telephone), secretaire_email });
       secretaireInfo = {
         nom: secretaire_nom,
         prenom: secretaire_prenom,
-        telephone: secretaire_telephone,
+        telephone: sanitizePhone(secretaire_telephone),
         email: secretaire_email,
       };
     }
 
-    const { prenom: directeurPrenom, nom: directeurNom } = splitFullName(college.directeur_nom);
+    // Préférer le champ `directeur_prenom` si présent (on prend le premier prénom)
+    let directeurPrenom = '';
+    let directeurNom = '';
+    if (college.directeur_prenom) {
+      directeurPrenom = college.directeur_prenom.trim().split(/\s+/)[0];
+      directeurNom = college.directeur_nom || '';
+    } else {
+      const split = splitFullName(college.directeur_nom);
+      directeurPrenom = split.prenom;
+      directeurNom = split.nom;
+    }
 
-    const directeurAccount = await User.createManagementAccount({
-      collegeId: id,
-      role: 'directeur',
-      nom: directeurNom,
-      prenom: directeurPrenom,
-      telephone: college.directeur_contact,
-      email: college.email,
-    });
 
-    const secretaireAccount = await User.createManagementAccount({
-      collegeId: id,
-      role: 'secretaire',
-      nom: secretaireInfo.nom,
-      prenom: secretaireInfo.prenom,
-      telephone: secretaireInfo.telephone,
-      email: secretaireInfo.email,
-    });
+      // Réserver immédiatement les usernames suggérés pour éviter les collisions
+      const directeurSuggested = await User.suggestUniqueUsername(directeurPrenom, directeurNom);
+      const secretaireSuggested = await User.suggestUniqueUsername(secretaireInfo.prenom, secretaireInfo.nom);
 
-    const { plainKey } = await AccessKey.createPending(id, 'free');
-    const activationBaseUrl = `${process.env.FRONTEND_URL || ''}/activation-compte`;
+      const directeurAccount = await User.createManagementAccount({
+        collegeId: id,
+        role: 'directeur',
+        nom: directeurNom,
+        prenom: directeurPrenom,
+        telephone: sanitizePhone(college.directeur_contact),
+        email: college.email,
+        username: directeurSuggested,
+      });
 
-    await sendActivationEmail(directeurAccount.email, {
-      role: 'directeur',
-      collegeName: college.nom,
-      suggestedUsername: generateUsernameSuggestion(directeurPrenom, directeurNom),
-      accessKey: plainKey,
-      activationUrl: `${activationBaseUrl}?email=${encodeURIComponent(directeurAccount.email)}`,
-    });
+      const secretaireAccount = await User.createManagementAccount({
+        collegeId: id,
+        role: 'secretaire',
+        nom: secretaireInfo.nom,
+        prenom: secretaireInfo.prenom,
+        telephone: secretaireInfo.telephone,
+        email: secretaireInfo.email,
+        username: secretaireSuggested,
+      });
 
-    await sendActivationEmail(secretaireAccount.email, {
-      role: 'secretaire',
-      collegeName: college.nom,
-      suggestedUsername: generateUsernameSuggestion(secretaireInfo.prenom, secretaireInfo.nom),
-      accessKey: plainKey,
-      activationUrl: `${activationBaseUrl}?email=${encodeURIComponent(secretaireAccount.email)}`,
-    });
+      const { plainKey } = await AccessKey.createPending(id, 'free');
+      const activationBaseUrl = `${process.env.FRONTEND_URL || ''}/activation-compte`;
+
+      await sendActivationEmail(directeurAccount.email, {
+        role: 'directeur',
+        collegeName: college.nom,
+        suggestedUsername: directeurSuggested,
+        accessKey: plainKey,
+        activationUrl: `${activationBaseUrl}?email=${encodeURIComponent(directeurAccount.email)}`,
+      });
+
+      await sendActivationEmail(secretaireAccount.email, {
+        role: 'secretaire',
+        collegeName: college.nom,
+        suggestedUsername: secretaireSuggested,
+        accessKey: plainKey,
+        activationUrl: `${activationBaseUrl}?email=${encodeURIComponent(secretaireAccount.email)}`,
+      });
 
     logger.info(`Management accounts created for college ${id}`);
     res.status(201).json({ directeur: directeurAccount, secretaire: secretaireAccount });

@@ -3,9 +3,11 @@ import { useSearchParams } from 'react-router-dom';
 import {
   FileText, CreditCard, LogOut, Trash2, Search, MapPin, Upload, Download,
   FileSpreadsheet, Image as ImageIcon, Check, X, Users, School, IdCard,
-  ChevronRight, Plus, Pencil, ArrowLeft, Loader2, Printer, Settings2, FileDown
+  ChevronRight, Plus, Pencil, ArrowLeft, Loader2, Printer, Settings2, FileDown,
+  KeyRound,
 } from 'lucide-react';
 import api, { collegeAPI, classAPI, studentAPI, importAPI, FILE_BASE_URL } from '../services/api';
+import ObservationsPanel from '../components/ObservationsPanel';
 import {
   generateBrouillonPDF, generateCollegeBrouillonPDF,
   generateFinalCardsPDF, generateSingleCardPDF, generateCardImages,
@@ -447,7 +449,7 @@ function CollegeGrid({ colleges, hasFilter, onOpen, onEdit }) {
           </div>
 
           <div className="text-xs text-slate-600 space-y-1 pl-12">
-            <div>Directeur : {c.directeur_nom || '—'}</div>
+            <div>Directeur : { (c.directeur_prenom || c.directeur_nom) ? `${c.directeur_prenom ? c.directeur_prenom + ' ' : ''}${c.directeur_nom || ''}` : '—' }</div>
             <div>Téléphone : {c.telephone || '—'}</div>
           </div>
 
@@ -464,10 +466,20 @@ function CollegeGrid({ colleges, hasFilter, onOpen, onEdit }) {
 function CollegeFormPanel({ mode, initial, departement, commune, onClose, onSaved }) {
   const [form, setForm] = useState({
     nom: initial?.nom || '',
+    directeur_prenom: initial?.directeur_prenom || '',
     directeur_nom: initial?.directeur_nom || '',
     directeur_contact: initial?.directeur_contact || '',
     email: initial?.email || '',
     telephone: initial?.telephone || '',
+  });
+  const [showSecretaireForm, setShowSecretaireForm] = useState(
+    !!(initial?.secretaire_nom || initial?.secretaire_prenom || initial?.secretaire_email)
+  );
+  const [secretaireForm, setSecretaireForm] = useState({
+    secretaire_nom: initial?.secretaire_nom || '',
+    secretaire_prenom: initial?.secretaire_prenom || '',
+    secretaire_telephone: initial?.secretaire_telephone || '',
+    secretaire_email: initial?.secretaire_email || '',
   });
   const [signature, setSignature] = useState(null);
   const [signaturePreview, setSignaturePreview] = useState(
@@ -502,15 +514,17 @@ function CollegeFormPanel({ mode, initial, departement, commune, onClose, onSave
     e.preventDefault();
     setError('');
     if (!form.nom.trim()) return setError('Le nom du collège est requis');
-    if (!form.directeur_nom.trim()) return setError('Le nom du directeur est requis');
+    if (!form.directeur_prenom.trim() || !form.directeur_nom.trim()) return setError('Le prénom et le nom du directeur sont requis');
 
     setSaving(true);
     try {
+      const secretaireData = showSecretaireForm ? secretaireForm : {};
+
       let id = initial?.id;
       if (mode === 'edit') {
-        await collegeAPI.update(id, form);
+        await collegeAPI.update(id, { ...form, ...secretaireData });
       } else {
-        const res = await collegeAPI.create({ ...form, ...loc });
+        const res = await collegeAPI.create({ ...form, ...loc, ...secretaireData });
         id = res.data.id;
       }
       if (signature && id) await collegeAPI.uploadSignature(id, signature);
@@ -548,17 +562,30 @@ function CollegeFormPanel({ mode, initial, departement, commune, onClose, onSave
             required
           />
         </div>
-        <div className="sm:col-span-2">
-          <label className="block text-xs font-medium text-slate-600 mb-1.5">Nom du directeur</label>
-          <input
-            type="text"
-            value={form.directeur_nom}
-            onChange={e => setForm({ ...form, directeur_nom: e.target.value })}
-            placeholder="Victor O. LAMODI"
-            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            required
-          />
-        </div>
+        <>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1.5">Prénom du directeur</label>
+            <input
+              type="text"
+              value={form.directeur_prenom}
+              onChange={e => setForm({ ...form, directeur_prenom: e.target.value })}
+              placeholder="Victor"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1.5">Nom du directeur</label>
+            <input
+              type="text"
+              value={form.directeur_nom}
+              onChange={e => setForm({ ...form, directeur_nom: e.target.value })}
+              placeholder="LAMODI"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              required
+            />
+          </div>
+        </>
         <div>
           <label className="block text-xs font-medium text-slate-600 mb-1.5">Email du directeur</label>
           <input
@@ -589,6 +616,59 @@ function CollegeFormPanel({ mode, initial, departement, commune, onClose, onSave
             className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>
+      </div>
+
+      <div className="mb-5">
+        {!showSecretaireForm ? (
+          <button
+            type="button"
+            onClick={() => setShowSecretaireForm(true)}
+            className="flex items-center gap-2 text-xs font-medium text-emerald-700 hover:text-emerald-800 cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Informations supplémentaires (secrétaire)
+          </button>
+        ) : (
+          <div className="border border-slate-200 rounded-lg p-4 bg-slate-50">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-medium text-slate-600">Informations de la secrétaire</p>
+              <button
+                type="button"
+                onClick={() => setShowSecretaireForm(false)}
+                className="text-xs text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                Masquer
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input
+                label="Prénom"
+                value={secretaireForm.secretaire_prenom}
+                onChange={v => setSecretaireForm({ ...secretaireForm, secretaire_prenom: v })}
+                placeholder="Chimène"
+              />
+              <Input
+                label="Nom"
+                value={secretaireForm.secretaire_nom}
+                onChange={v => setSecretaireForm({ ...secretaireForm, secretaire_nom: v })}
+                placeholder="AGOSSOU"
+              />
+              <Input
+                label="Téléphone"
+                value={secretaireForm.secretaire_telephone}
+                onChange={v => setSecretaireForm({ ...secretaireForm, secretaire_telephone: v })}
+                placeholder="+229 90 00 00 00"
+              />
+              <Input
+                label="Email"
+                type="email"
+                value={secretaireForm.secretaire_email}
+                onChange={v => setSecretaireForm({ ...secretaireForm, secretaire_email: v })}
+                placeholder="secretaire@college.com"
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="mb-5">
@@ -635,9 +715,42 @@ function ClassGrid({ classes, onOpen, collegeId, collegeNom, collegeInfo, onRefr
   const [form, setForm] = useState({ niveau: '', serie: '' });
   const [editingId, setEditingId] = useState(null);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [generatingCollege, setGeneratingCollege] = useState(false);
+
+  const [creatingComptes, setCreatingComptes] = useState(false);
+  const [showSecretaireModal, setShowSecretaireModal] = useState(false);
+  const [secretaireModalForm, setSecretaireModalForm] = useState({
+    secretaire_nom: '', secretaire_prenom: '', secretaire_telephone: '', secretaire_email: '',
+  });
+
+  const flash = (msg) => { setNotice(msg); setTimeout(() => setNotice(''), 5000); };
+
+  const handleCreateComptes = async (extra = {}) => {
+    setError('');
+    setCreatingComptes(true);
+    try {
+      await collegeAPI.createManagementAccounts(collegeId, extra);
+      setShowSecretaireModal(false);
+      flash('Comptes de gestion créés — identifiants envoyés par email au directeur et à la secrétaire');
+    } catch (err) {
+      const code = err.response?.data?.code;
+      if (code === 'SECRETAIRE_INFO_REQUIRED') {
+        setShowSecretaireModal(true);
+      } else {
+        setError(err.response?.data?.error || 'Erreur lors de la création des comptes de gestion');
+      }
+    } finally {
+      setCreatingComptes(false);
+    }
+  };
+
+  const submitSecretaireModal = (e) => {
+    e.preventDefault();
+    handleCreateComptes(secretaireModalForm);
+  };
 
   const reset = () => {
     setForm({ niveau: '', serie: '' });
@@ -739,6 +852,15 @@ function ClassGrid({ classes, onOpen, collegeId, collegeNom, collegeInfo, onRefr
           </button>
 
           <button
+            onClick={() => handleCreateComptes()}
+            disabled={creatingComptes}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:border-slate-300 disabled:opacity-50 text-slate-700 rounded-lg text-sm font-medium cursor-pointer whitespace-nowrap"
+          >
+            {creatingComptes ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
+            {creatingComptes ? 'Création...' : 'Créer comptes de gestion'}
+          </button>
+
+          <button
             onClick={showForm ? reset : openCreate}
             className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium cursor-pointer whitespace-nowrap"
           >
@@ -749,6 +871,60 @@ function ClassGrid({ classes, onOpen, collegeId, collegeNom, collegeInfo, onRefr
       </div>
 
       {error && <Notice onClose={() => setError('')}>{error}</Notice>}
+      {notice && <Notice type="success" onClose={() => setNotice('')}>{notice}</Notice>}
+
+      {showSecretaireModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+          <form onSubmit={submitSecretaireModal} className="bg-white rounded-xl p-6 max-w-md w-full">
+            <h3 className="text-sm font-semibold text-slate-800 mb-1">Informations de la secrétaire</h3>
+            <p className="text-xs text-slate-500 mb-4">
+              Requises pour créer les deux comptes de gestion (directeur + secrétaire).
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
+              <Input
+                label="Prénom"
+                required
+                value={secretaireModalForm.secretaire_prenom}
+                onChange={v => setSecretaireModalForm({ ...secretaireModalForm, secretaire_prenom: v })}
+              />
+              <Input
+                label="Nom"
+                required
+                value={secretaireModalForm.secretaire_nom}
+                onChange={v => setSecretaireModalForm({ ...secretaireModalForm, secretaire_nom: v })}
+              />
+              <Input
+                label="Téléphone"
+                value={secretaireModalForm.secretaire_telephone}
+                onChange={v => setSecretaireModalForm({ ...secretaireModalForm, secretaire_telephone: v })}
+              />
+              <Input
+                label="Email"
+                type="email"
+                required
+                value={secretaireModalForm.secretaire_email}
+                onChange={v => setSecretaireModalForm({ ...secretaireModalForm, secretaire_email: v })}
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={creatingComptes}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg text-sm font-medium cursor-pointer"
+              >
+                {creatingComptes ? 'Création...' : 'Créer les comptes'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowSecretaireModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium cursor-pointer"
+              >
+                Annuler
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {showForm && (
         <form onSubmit={submit} className="bg-white border border-emerald-200 rounded-xl p-5 mb-5">
@@ -1440,50 +1616,58 @@ function BrouillonSection({ cls, students, collegeInfo, onRefresh }) {
       {error && <Notice onClose={() => setError('')}>{error}</Notice>}
       {notice && <Notice type="success">{notice}</Notice>}
 
-      {!students.length ? (
-        <Panel><p className="text-sm text-slate-500">Aucun élève dans cette classe.</p></Panel>
-      ) : (
-        <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100">
-          {students.map(s => (
-            <div key={s.id} className="flex items-center gap-4 p-4">
-              <label className="w-14 h-14 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 overflow-hidden cursor-pointer relative group">
-                {s.photo_path ? (
-                  <img src={photoUrl(s.photo_path)} alt={s.nom} className="w-full h-full object-cover" />
-                ) : (
-                  <ImageIcon className="w-5 h-5 text-slate-300" />
-                )}
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={e => changePhoto(s.id, e.target.files[0])}
-                  className="hidden"
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition flex items-center justify-center">
-                  <span className="text-[10px] text-white opacity-0 group-hover:opacity-100">Changer</span>
+      <div className="flex gap-6">
+        <div className="flex-1">
+          {!students.length ? (
+            <Panel><p className="text-sm text-slate-500">Aucun élève dans cette classe.</p></Panel>
+          ) : (
+            <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100">
+              {students.map(s => (
+                <div key={s.id} className="flex items-center gap-4 p-4">
+                  <label className="w-14 h-14 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 overflow-hidden cursor-pointer relative group">
+                    {s.photo_path ? (
+                      <img src={photoUrl(s.photo_path)} alt={s.nom} className="w-full h-full object-cover" />
+                    ) : (
+                      <ImageIcon className="w-5 h-5 text-slate-300" />
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={e => changePhoto(s.id, e.target.files[0])}
+                      className="hidden"
+                    />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition flex items-center justify-center">
+                      <span className="text-[10px] text-white opacity-0 group-hover:opacity-100">Changer</span>
+                    </div>
+                  </label>
+
+                  <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 text-sm">
+                    <div><span className="text-xs text-slate-400">Matricule</span><div className="text-slate-800 font-medium">{s.matricule}</div></div>
+                    <div><span className="text-xs text-slate-400">Nom</span><div className="text-slate-700">{s.nom}</div></div>
+                    <div><span className="text-xs text-slate-400">Prénom</span><div className="text-slate-700">{s.prenom}</div></div>
+                    <div><span className="text-xs text-slate-400">Sexe</span><div className="text-slate-700">{s.sexe}</div></div>
+                    <div><span className="text-xs text-slate-400">Date et lieu de naissance</span><div className="text-slate-700">{formatDateFr(s.date_naissance) || '—'} {s.lieu_naissance ? `· ${s.lieu_naissance}` : ''}</div></div>
+                    <div><span className="text-xs text-slate-400">Nationalité</span><div className="text-slate-700">{s.nationalite || '—'}</div></div>
+                    <div className="col-span-2"><span className="text-xs text-slate-400">Contact parent</span><div className="text-slate-700">{s.adresse || '—'}</div></div>
+                  </div>
+
+                  <button
+                    onClick={() => startEdit(s)}
+                    className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md cursor-pointer shrink-0"
+                    title="Modifier"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
                 </div>
-              </label>
-
-              <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 text-sm">
-                <div><span className="text-xs text-slate-400">Matricule</span><div className="text-slate-800 font-medium">{s.matricule}</div></div>
-                <div><span className="text-xs text-slate-400">Nom</span><div className="text-slate-700">{s.nom}</div></div>
-                <div><span className="text-xs text-slate-400">Prénom</span><div className="text-slate-700">{s.prenom}</div></div>
-                <div><span className="text-xs text-slate-400">Sexe</span><div className="text-slate-700">{s.sexe}</div></div>
-                <div><span className="text-xs text-slate-400">Date et lieu de naissance</span><div className="text-slate-700">{formatDateFr(s.date_naissance) || '—'} {s.lieu_naissance ? `· ${s.lieu_naissance}` : ''}</div></div>
-                <div><span className="text-xs text-slate-400">Nationalité</span><div className="text-slate-700">{s.nationalite || '—'}</div></div>
-                <div className="col-span-2"><span className="text-xs text-slate-400">Contact parent</span><div className="text-slate-700">{s.adresse || '—'}</div></div>
-              </div>
-
-              <button
-                onClick={() => startEdit(s)}
-                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md cursor-pointer shrink-0"
-                title="Modifier"
-              >
-                <Pencil className="w-4 h-4" />
-              </button>
+              ))}
             </div>
-          ))}
+          )}
         </div>
-      )}
+
+        <div className="w-80 hidden lg:block">
+          <ObservationsPanel classId={cls.id} />
+        </div>
+      </div>
 
       {editingStudent && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">

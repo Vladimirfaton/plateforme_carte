@@ -4,7 +4,7 @@ import { ArrowLeft, MapPin, Loader2 } from 'lucide-react';
 import { collegeAPI } from '../services/api';
 
 const emptyForm = {
-  nom: '', directeur_nom: '', directeur_contact: '', email: '', telephone: '',
+  nom: '', directeur_prenom: '', directeur_nom: '', directeur_contact: '', email: '', telephone: '',
 };
 
 export default function CollegeForm() {
@@ -32,6 +32,7 @@ export default function CollegeForm() {
         const c = res.data;
         setForm({
           nom: c.nom || '',
+          directeur_prenom: c.directeur_prenom || '',
           directeur_nom: c.directeur_nom || '',
           directeur_contact: c.directeur_contact || '',
           email: c.email || '',
@@ -68,7 +69,7 @@ export default function CollegeForm() {
     setError('');
 
     if (!form.nom.trim()) return setError('Le nom du collège est requis');
-    if (!form.directeur_nom.trim()) return setError('Le nom du directeur est requis');
+    if (!form.directeur_prenom.trim() || !form.directeur_nom.trim()) return setError('Le prénom et le nom du directeur sont requis');
     if (!departement || !commune) return setError('Localisation manquante — revenez au dashboard');
 
     setSaving(true);
@@ -147,16 +148,28 @@ export default function CollegeForm() {
             />
           </Field>
 
-          <Field label="Nom du directeur" required>
-            <input
-              type="text"
-              value={form.directeur_nom}
-              onChange={e => setForm({ ...form, directeur_nom: e.target.value })}
-              placeholder="Victor O. LAMODI"
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              required
-            />
-          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Prénom du directeur" required>
+              <input
+                type="text"
+                value={form.directeur_prenom}
+                onChange={e => setForm({ ...form, directeur_prenom: e.target.value })}
+                placeholder="Victor"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                required
+              />
+            </Field>
+            <Field label="Nom du directeur" required>
+              <input
+                type="text"
+                value={form.directeur_nom}
+                onChange={e => setForm({ ...form, directeur_nom: e.target.value })}
+                placeholder="LAMODI"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                required
+              />
+            </Field>
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Email du directeur">

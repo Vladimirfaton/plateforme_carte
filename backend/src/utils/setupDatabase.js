@@ -22,7 +22,7 @@ const createTables = async () => {
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(100) UNIQUE');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS nom VARCHAR(255)');
     await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS prenom VARCHAR(255)');
-    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS telephone VARCHAR(20)');
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS telephone VARCHAR(30)');
     // status: active (admin par défaut) | pending_activation | expired
     await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'active'");
 
@@ -43,9 +43,10 @@ const createTables = async () => {
         commune VARCHAR(255) NOT NULL,
         departement VARCHAR(255) NOT NULL,
         directeur_nom VARCHAR(255),
+        directeur_prenom VARCHAR(255),
         directeur_contact VARCHAR(255),
         email VARCHAR(255),
-        telephone VARCHAR(20),
+        telephone VARCHAR(30),
         signature_path TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -55,8 +56,9 @@ const createTables = async () => {
     // --- Migration additive colleges : infos secrétaire (facultatives à la création) ---
     await pool.query('ALTER TABLE colleges ADD COLUMN IF NOT EXISTS secretaire_nom VARCHAR(255)');
     await pool.query('ALTER TABLE colleges ADD COLUMN IF NOT EXISTS secretaire_prenom VARCHAR(255)');
-    await pool.query('ALTER TABLE colleges ADD COLUMN IF NOT EXISTS secretaire_telephone VARCHAR(20)');
+    await pool.query('ALTER TABLE colleges ADD COLUMN IF NOT EXISTS secretaire_telephone VARCHAR(30)');
     await pool.query('ALTER TABLE colleges ADD COLUMN IF NOT EXISTS secretaire_email VARCHAR(255)');
+    await pool.query('ALTER TABLE colleges ADD COLUMN IF NOT EXISTS directeur_prenom VARCHAR(255)');
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS classes (
@@ -83,7 +85,7 @@ const createTables = async () => {
         lieu_naissance VARCHAR(255),
         nationalite VARCHAR(255),
         adresse TEXT,
-        telephone VARCHAR(20),
+        telephone VARCHAR(30),
         photo_path TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
