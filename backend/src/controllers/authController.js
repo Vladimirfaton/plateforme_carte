@@ -3,7 +3,8 @@ import { User } from '../models/User.js';
 import { AccessKey } from '../models/AccessKey.js';
 import logger from '../config/logger.js';
 import { generateOTP, saveOTP, verifyOTP } from '../utils/otpUtils.js';
-import { sendOtpEmail } from '../utils/email.js';
+import { sendOtpEmail, sendLoginLinkEmail } from '../utils/email.js';
+import { College } from '../models/College.js';
 import { normalizeUsername } from '../utils/username.js';
 import { isValidPassword } from '../utils/validators.js';
 
@@ -263,24 +264,23 @@ export const activateAccount = async (req, res) => {
     if (!pendingKey) {
       return res.status(401).json({ error: "Clé d'accès invalide" });
     }
-
-    const activatedUser = await User.activateAccount(user.id, usernameNormalized, password);
+const activatedUser = await User.activateAccount(user.id, usernameNormalized, password);
     await AccessKey.activate(pendingKey.id, 'free');
 
-    const token = jwt.sign(
-      {
-        id: activatedUser.id,
-        email: activatedUser.email,
+    const loginUrl = `${(process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '')}/gestion/login`;
+    try {
+      const college = await College.findById(activatedUser.college_id);
+      await sendLoginLinkEmail(activatedUser.email, {
         role: activatedUser.role,
-        college_id: activatedUser.college_id,
-        username: activatedUser.username,
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRE || '7d' }
-    );
+        collegeName: college?.nom || '',
+        loginUrl,
+      });
+    } catch (mailErr) {
+      logger.error(`Login link email failed: ${mailErr.message}`);
+    }
 
     logger.info(`Account activated: ${email} (${activatedUser.role})`);
-    res.json({ token, user: activatedUser });
+    res.json({ activated: true, user: activatedUser });
   } catch (error) {
     logger.error(`Activation error: ${error.message}`);
     res.status(500).json({ error: "Erreur lors de l'activation du compte" });

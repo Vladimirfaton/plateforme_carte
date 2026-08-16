@@ -7,6 +7,27 @@ import { uploadBuffer, deleteByPublicUrl } from '../utils/storage.js';
 import { splitFullName, generateUsernameSuggestion } from '../utils/username.js';
 import { sendActivationEmail } from '../utils/email.js';
 
+const sendManagementActivationSafe = async ({ email, role, college, suggestedUsername, plainKey }) => {
+  const frontendBaseUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
+  const activationBaseUrl = `${frontendBaseUrl}/activation-compte`;
+
+  try {
+    await sendActivationEmail(email, {
+      role,
+      collegeName: college.nom,
+      suggestedUsername,
+      accessKey: plainKey,
+      activationUrl: `${activationBaseUrl}?email=${encodeURIComponent(email)}&key=${encodeURIComponent(plainKey)}&username=${encodeURIComponent(suggestedUsername || '')}`,
+    });
+
+    logger.info(`Activation email sent successfully for ${role} (${email})`);
+    return { email, role, sent: true };
+  } catch (error) {
+    logger.error(`Activation email failed for ${role} (${email}): ${error.message}`);
+    return { email, role, sent: false, error: error.message };
+  }
+};
+
 export const createCollege = async (req, res) => {
   try {
     const {
@@ -204,9 +225,10 @@ export const createManagementAccounts = async (req, res) => {
       return res.status(404).json({ error: 'Collège non trouvé' });
     }
 
-    if (!college.directeur_nom || !college.directeur_contact || !college.email) {
+    const directeurEmail = (college.directeur_contact || '').trim() || (college.email || '').trim();
+    if (!college.directeur_nom || !directeurEmail) {
       return res.status(400).json({
-        error: 'Informations du directeur incomplètes sur ce collège (nom, contact et email requis)',
+        error: 'Informations du directeur incomplètes sur ce collège (nom et email requis)',
       });
     }
 
@@ -268,7 +290,7 @@ export const createManagementAccounts = async (req, res) => {
         nom: directeurNom,
         prenom: directeurPrenom,
         telephone: sanitizePhone(college.directeur_contact),
-        email: college.email,
+        email: directeurEmail,
         username: directeurSuggested,
       });
 
@@ -283,27 +305,35 @@ export const createManagementAccounts = async (req, res) => {
       });
 
       const { plainKey } = await AccessKey.createPending(id, 'free');
-      const frontendBaseUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
-      const activationBaseUrl = `${frontendBaseUrl}/activation-compte`;
 
-      await sendActivationEmail(directeurAccount.email, {
-        role: 'directeur',
-        collegeName: college.nom,
-        suggestedUsername: directeurSuggested,
-        accessKey: plainKey,
-        activationUrl: `${activationBaseUrl}?email=${encodeURIComponent(directeurAccount.email)}&key=${encodeURIComponent(plainKey)}`,
+      const emailResults = await Promise.all([
+        sendManagementActivationSafe({
+          email: directeurAccount.email,
+          role: 'directeur',
+          college,
+          suggestedUsername: directeurSuggested,
+          plainKey,
+        }),
+        sendManagementActivationSafe({
+          email: secretaireAccount.email,
+          role: 'secretaire',
+          college,
+          suggestedUsername: secretaireSuggested,
+          plainKey,
+        }),
+      ]);
+
+      const failedEmails = emailResults.filter((result) => !result.sent);
+      logger.info(`Management accounts created for college ${id}`);
+
+      res.status(201).json({
+        directeur: directeurAccount,
+        secretaire: secretaireAccount,
+        emailStatus: {
+          sent: emailResults.filter((result) => result.sent).length,
+          failed: failedEmails,
+        },
       });
-
-      await sendActivationEmail(secretaireAccount.email, {
-        role: 'secretaire',
-        collegeName: college.nom,
-        suggestedUsername: secretaireSuggested,
-        accessKey: plainKey,
-        activationUrl: `${activationBaseUrl}?email=${encodeURIComponent(secretaireAccount.email)}&key=${encodeURIComponent(plainKey)}`,
-      });
-
-    logger.info(`Management accounts created for college ${id}`);
-    res.status(201).json({ directeur: directeurAccount, secretaire: secretaireAccount });
   } catch (error) {
     logger.error(`Error creating management accounts: ${error.message}`);
     res.status(500).json({ error: 'Erreur lors de la création des comptes de gestion' });
@@ -335,25 +365,37 @@ export const resendManagementActivationEmails = async (req, res) => {
       return res.status(400).json({ error: 'Aucun compte en attente d’activation pour ce collège' });
     }
 
-    const pendingKey = await AccessKey.findPendingByCollege(id);
-    const keyToSend = pendingKey || (await AccessKey.createPending(id, 'free')).plainKey;
-    const frontendBaseUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '');
-    const activationBaseUrl = `${frontendBaseUrl}/activation-compte`;
+    const { plainKey: keyToSend } = await AccessKey.createPending(id, 'free');
 
-    await Promise.all(
+    const emailResults = await Promise.all(
       pendingAccounts.map(async (account) => {
-        await sendActivationEmail(account.email, {
-          role: account.role,
-          collegeName: college.nom,
-          suggestedUsername: account.username || account.prenom ? `${(account.prenom || '').trim()}${(account.nom || '').trim()}`.toLowerCase().replace(/\s+/g, '') : 'utilisateur',
-          accessKey: keyToSend,
-          activationUrl: `${activationBaseUrl}?email=${encodeURIComponent(account.email)}&key=${encodeURIComponent(keyToSend)}`,
-        });
+        const suggestedUsername = account.username || `${(account.prenom || '').trim()}${(account.nom || '').trim()}`.toLowerCase().replace(/\s+/g, '') || 'utilisateur';
+
+        try {
+          await sendActivationEmail(account.email, {
+            role: account.role,
+            collegeName: college.nom,
+            suggestedUsername,
+            accessKey: keyToSend,
+            activationUrl: `${(process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '')}/activation-compte?email=${encodeURIComponent(account.email)}&key=${encodeURIComponent(keyToSend)}&username=${encodeURIComponent(suggestedUsername || '')}`,
+          });
+
+          logger.info(`Activation email resent successfully for ${account.role} (${account.email})`);
+          return { email: account.email, role: account.role, sent: true };
+        } catch (error) {
+          logger.error(`Activation email resend failed for ${account.role} (${account.email}): ${error.message}`);
+          return { email: account.email, role: account.role, sent: false, error: error.message };
+        }
       })
     );
 
+    const failedEmails = emailResults.filter((result) => !result.sent);
     logger.info(`Activation emails resent for college ${id}`);
-    res.json({ sent: pendingAccounts.length, accounts: pendingAccounts.map((a) => ({ id: a.id, email: a.email, role: a.role })) });
+    res.json({
+      sent: emailResults.filter((result) => result.sent).length,
+      failed: failedEmails,
+      accounts: pendingAccounts.map((a) => ({ id: a.id, email: a.email, role: a.role })),
+    });
   } catch (error) {
     logger.error(`Error resending management activation emails: ${error.message}`);
     res.status(500).json({ error: 'Erreur lors de l’envoi des liens d’activation' });

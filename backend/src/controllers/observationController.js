@@ -1,6 +1,5 @@
 import { Observation } from '../models/Observation.js';
 import { Class } from '../models/Class.js';
-import { User } from '../models/User.js';
 import logger from '../config/logger.js';
 
 export const createObservation = async (req, res) => {
@@ -13,8 +12,8 @@ export const createObservation = async (req, res) => {
     const classData = await Class.findById(classId);
     if (!classData) return res.status(404).json({ error: 'Classe non trouvée' });
 
-    // Access control: admin can create for any college; director/secretary only for their college
-    if (req.user.role !== 'admin' && req.user.college_id !== classData.college_id) {
+    // Directeur et secrétaire scopés à leur propre collège
+    if (['directeur', 'secretaire'].includes(req.user.role) && req.user.college_id !== classData.college_id) {
       return res.status(403).json({ error: 'Accès non autorisé à cette classe' });
     }
 
@@ -29,7 +28,7 @@ export const createObservation = async (req, res) => {
     res.status(201).json(obs);
   } catch (error) {
     logger.error(`createObservation error: ${error.message}`);
-    res.status(500).json({ error: 'Erreur lors de la création de l\'observation' });
+    res.status(500).json({ error: "Erreur lors de la création de l'observation" });
   }
 };
 

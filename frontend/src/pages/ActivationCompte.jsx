@@ -1,18 +1,19 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { IdCard, Loader2 } from 'lucide-react';
+import { IdCard, Loader2, Check } from 'lucide-react';
 import { authAPI } from '../services/api';
 
 export default function ActivationCompte({ onLoginSuccess }) {
   const [searchParams] = useSearchParams();
   const [email, setEmail] = useState(searchParams.get('email') || '');
   const [accessKey, setAccessKey] = useState(searchParams.get('key') || '');
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState(searchParams.get('username') || searchParams.get('suggestedUsername') || '');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [usernameError, setUsernameError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [activated, setActivated] = useState(false);
   const navigate = useNavigate();
 
   const submit = async (e) => {
@@ -27,18 +28,14 @@ export default function ActivationCompte({ onLoginSuccess }) {
 
     setLoading(true);
     try {
-      const res = await authAPI.activateAccount({
+      await authAPI.activateAccount({
         email,
         accessKey: accessKey.trim().toUpperCase(),
         username,
         password,
         confirmPassword,
       });
-      const { token, user } = res.data;
-      sessionStorage.setItem('token', token);
-      sessionStorage.setItem('user', JSON.stringify(user));
-      onLoginSuccess?.();
-      navigate('/gestion/dashboard');
+      setActivated(true);
     } catch (err) {
       const code = err.response?.data?.code;
       const message = err.response?.data?.error || "Erreur lors de l'activation";
@@ -51,7 +48,21 @@ export default function ActivationCompte({ onLoginSuccess }) {
       setLoading(false);
     }
   };
-
+  if (activated) {
+    return (
+      <div className="min-h-screen bg-[#f7faf8] flex items-center justify-center px-4">
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-8 w-full max-w-sm text-center">
+          <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-4">
+            <Check className="w-6 h-6 text-emerald-600" />
+          </div>
+          <h2 className="text-base font-semibold text-slate-800 mb-2">Compte activé</h2>
+          <p className="text-sm text-slate-500">
+            Consultez votre boîte mail pour obtenir votre lien de connexion.
+          </p>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="min-h-screen bg-[#f7faf8] flex items-center justify-center px-4 py-10">
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-8 w-full max-w-sm">

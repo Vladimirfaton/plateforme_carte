@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { classAPI } from '../services/api';
 
-export default function ObservationsPanel({ classId }) {
+export default function ObservationsPanel({ classId, readOnly = false }) {
   const [observations, setObservations] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [content, setContent] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const [loading, setLoading]           = useState(true);
+  const [content, setContent]           = useState('');
+  const [submitting, setSubmitting]     = useState(false);
+  const [error, setError]               = useState('');
 
   useEffect(() => {
     if (!classId) return;
@@ -20,60 +21,70 @@ export default function ObservationsPanel({ classId }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!content.trim()) return;
+    setError('');
     setSubmitting(true);
     try {
       const res = await classAPI.createObservation(classId, content.trim());
       setObservations((s) => [res.data, ...s]);
       setContent('');
     } catch (err) {
-      // ignore - caller will show toasts normally
-      console.error(err);
+      setError(err.response?.data?.error || "Erreur lors de l'ajout de l'observation");
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="p-4 bg-white border rounded-md">
-      <h3 className="text-sm font-semibold mb-3">Observations</h3>
+    <div className="bg-white border border-slate-200 rounded-xl p-5">
+      <h3 className="text-sm font-semibold text-slate-800 mb-4">Observations</h3>
 
-      <form onSubmit={handleSubmit} className="mb-4">
-        <textarea
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          placeholder="Ajouter une observation (ex: correction du nom, absence photo, etc.)"
-          className="w-full border rounded p-2 h-20 text-sm"
-        />
-        <div className="flex justify-end mt-2">
-          <button
-            type="submit"
-            disabled={submitting || !content.trim()}
-            className="bg-emerald-600 text-white px-3 py-1 rounded disabled:opacity-60"
-          >
-            {submitting ? 'Envoi...' : 'Ajouter'}
-          </button>
-        </div>
-      </form>
+      {!readOnly && (
+        <form onSubmit={handleSubmit} className="mb-5">
+          <textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder="Ajouter une observation (ex: correction du nom, absence photo, etc.)"
+            rows={3}
+            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+          />
+          {error && (
+            <p className="text-xs text-rose-600 mt-1">{error}</p>
+          )}
+          <div className="flex justify-end mt-2">
+            <button
+              type="submit"
+              disabled={submitting || !content.trim()}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg text-sm font-medium cursor-pointer"
+            >
+              {submitting ? 'Envoi...' : 'Ajouter'}
+            </button>
+          </div>
+        </form>
+      )}
 
-      <div>
-        {loading ? (
-          <div className="text-sm text-gray-500">Chargement...</div>
-        ) : observations.length === 0 ? (
-          <div className="text-sm text-gray-500">Aucune observation</div>
-        ) : (
-          <ul className="space-y-3">
-            {observations.map((o) => (
-              <li key={o.id} className="border p-2 rounded">
-                <div className="text-xs text-gray-500 mb-1">
-                  {o.auteur_nom || 'Utilisateur'} {o.auteur_prenom ? ` ${o.auteur_prenom}` : ''} —{' '}
-                  <span className="font-mono text-[11px]">{new Date(o.created_at).toLocaleString()}</span>
-                </div>
-                <div className="text-sm">{o.contenu}</div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      {loading ? (
+        <p className="text-sm text-slate-400">Chargement...</p>
+      ) : observations.length === 0 ? (
+        <p className="text-sm text-slate-400">Aucune observation pour cette classe.</p>
+      ) : (
+        <ul className="space-y-3">
+          {observations.map((o) => (
+            <li key={o.id} className="border border-slate-100 rounded-lg p-3 bg-slate-50">
+              <div className="text-xs text-slate-400 mb-1">
+                {(o.auteur_prenom || o.auteur_nom)
+                  ? `${o.auteur_prenom || ''} ${o.auteur_nom || ''}`.trim()
+                  : (o.auteur_role || 'Utilisateur')}
+                <span className="mx-1.5 text-slate-300">·</span>
+                {new Date(o.created_at).toLocaleString('fr-FR', {
+                  day: '2-digit', month: '2-digit', year: 'numeric',
+                  hour: '2-digit', minute: '2-digit',
+                })}
+              </div>
+              <div className="text-sm text-slate-700">{o.contenu}</div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

@@ -149,5 +149,27 @@ export const sendReactivationEmail = async (email, { collegeName, accessKey, rea
   `;
   return sendSimpleEmail(email, subject, htmlContent);
 };
-
-export default { sendOtpEmail, sendSimpleEmail, sendActivationEmail, sendReactivationEmail };
+export const sendLoginLinkEmail = async (email, { role, collegeName, loginUrl }) => {
+  const subject = `Votre espace FVS est activé - ${collegeName}`;
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background-color: #f7faf8; padding: 24px; border-radius: 10px;">
+        <h2 style="color: #059669; margin-bottom: 16px;">Compte activé avec succès</h2>
+        <p style="color: #333; font-size: 15px;">
+          Votre espace <strong>${roleLabel(role)}</strong> du collège <strong>${collegeName}</strong> est prêt.
+        </p>
+        <p style="text-align: center; margin: 24px 0;">
+          <a href="${loginUrl}" style="background-color: #059669; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">
+            Accéder à mon espace
+          </a>
+        </p>
+        <p style="color: #666; font-size: 13px; text-align: center;">
+          Ou copiez ce lien : <a href="${loginUrl}">${loginUrl}</a>
+        </p>
+        <p style="color: #999; font-size: 12px; text-align: center;">FVS - Plateforme de gestion scolaire</p>
+      </div>
+    </div>
+  `;
+  return sendSimpleEmail(email, subject, htmlContent);
+};
+export default { sendOtpEmail, sendSimpleEmail, sendActivationEmail, sendReactivationEmail, sendLoginLinkEmail };

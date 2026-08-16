@@ -4,7 +4,7 @@ import {
   FileText, CreditCard, LogOut, Trash2, Search, MapPin, Upload, Download,
   FileSpreadsheet, Image as ImageIcon, Check, X, Users, School, IdCard,
   ChevronRight, Plus, Pencil, ArrowLeft, Loader2, Printer, Settings2, FileDown,
-  KeyRound,
+  KeyRound, Mail,
 } from 'lucide-react';
 import api, { collegeAPI, classAPI, studentAPI, importAPI, FILE_BASE_URL } from '../services/api';
 import ObservationsPanel from '../components/ObservationsPanel';
