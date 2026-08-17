@@ -74,7 +74,8 @@ export const classAPI = {
   delete: (classId) => api.delete(`/classes/class/${classId}`),
   // Observations
   listObservations: (classId) => api.get(`/classes/class/${classId}/observations`),
-  createObservation: (classId, contenu) => api.post(`/classes/class/${classId}/observations`, { contenu }),
+  createObservation: (classId, contenu, eleveId = null) => 
+  api.post(`/classes/class/${classId}/observations`, { contenu, eleve_id: eleveId }),
 };
 
 export const studentAPI = {
@@ -111,5 +112,7 @@ export const importAPI = {
   importStudents: (classId, students) => api.post(`/students/${classId}/import`, { students }),
   downloadTemplate: () => api.get('/students/import/template', { responseType: 'blob' }),
 };
-
+export const assistanceAPI = {
+  send: (data) => api.post('/assistance/send', data),
+};
 export default api;

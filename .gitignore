@@ -12,3 +12,4 @@ uploads/
 *.pem
 package-lock.json
 yarn.lock
+bash

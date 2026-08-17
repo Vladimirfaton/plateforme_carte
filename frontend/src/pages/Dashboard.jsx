@@ -1772,8 +1772,8 @@ function RectoPreview({ student, cls, college, year }) {
   const logoH = logoW * 0.214;
   const titleTop = u(5) + logoH + u(6);
   const photoTop = titleTop + u(16);
-  const photoW = u(52);
-  const photoH = u(62);
+  const photoW = u(35);
+  const photoH = u(45);
   const infoLeft = u(8) + photoW + u(9);
   const rowH = u(8.5);
   const fs = u(6.5);

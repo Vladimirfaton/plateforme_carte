@@ -7,8 +7,7 @@ import { FILE_BASE_URL } from '../services/api';
 // ============================================================================
 
 const MM = 2.834645669; // 1 mm en points PDF
-const PHOTO_WIDTH_MM = 35;
-const PHOTO_HEIGHT_MM = 45;
+
 export const DEFAULT_CARD_MM = { width: 85.6, height: 53.98 };
 
 const BASE_W = 242.6;  // largeur de référence du design (ISO ID-1 en pt)
@@ -234,8 +233,8 @@ const drawRecto = (page, ox, oy, W, H, ctx) => {
 
   // ---- Photo + matricule
   const photoX = ox + u(8);
-  const photoW = u(PHOTO_WIDTH_MM * MM);
-  const photoH = u(PHOTO_HEIGHT_MM * MM);
+  const photoW = u(35);
+  const photoH = u(45);
   const photoY = titleY - u(8) - photoH;
 
   page.drawRectangle({
@@ -673,8 +672,8 @@ const drawRectoCanvas = (ctx, { student, classInfo, collegeInfo, logoImg, photoI
   d.text(`CARTE D'IDENTITE SCOLAIRE   ${year}`, W / 2, titleY, u(9), 'bold', '#000', 'center');
 
   const photoX = u(8);
-  const photoW = u(PHOTO_WIDTH_MM * MM);
-  const photoH = u(PHOTO_HEIGHT_MM * MM);
+  const photoW = u(35);
+  const photoH = u(45);
   const photoY = titleY - u(8) - photoH;
   d.rect(photoX, photoY, photoW, photoH, '#141414');
   if (photoImg) {
@@ -876,6 +875,15 @@ const appendClassBrouillonPages = async (pdfDoc, font, fontBold, students, class
       x: MARGIN, y, size: 13, font: fontBold, color: rgb(0.05, 0.4, 0.25),
     });
     y -= 18;
+    const loc = [collegeInfo?.commune, collegeInfo?.departement].filter(Boolean).join(' - ');
+  if (loc) {
+    page.drawText(loc, {
+      x: MARGIN, y, size: 9, font: font, color: rgb(0.3, 0.3, 0.3),
+    });
+    y -= 16;
+  } else {
+    y -= 16;
+  }
     page.drawText(
       `Brouillon — Classe ${classInfo?.code || ''}  ·  ${students.length} élève${students.length > 1 ? 's' : ''}  ·  page ${pageIndex + 1}/${totalPages}`,
       { x: MARGIN, y, size: 9, font, color: rgb(0.4, 0.4, 0.4) }
