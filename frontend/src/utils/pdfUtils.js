@@ -7,7 +7,8 @@ import { FILE_BASE_URL } from '../services/api';
 // ============================================================================
 
 const MM = 2.834645669; // 1 mm en points PDF
-
+const PHOTO_WIDTH_MM = 35;
+const PHOTO_HEIGHT_MM = 45;
 export const DEFAULT_CARD_MM = { width: 85.6, height: 53.98 };
 
 const BASE_W = 242.6;  // largeur de référence du design (ISO ID-1 en pt)
@@ -233,8 +234,8 @@ const drawRecto = (page, ox, oy, W, H, ctx) => {
 
   // ---- Photo + matricule
   const photoX = ox + u(8);
-  const photoW = u(52);
-  const photoH = u(62);
+  const photoW = u(PHOTO_WIDTH_MM * MM);
+  const photoH = u(PHOTO_HEIGHT_MM * MM);
   const photoY = titleY - u(8) - photoH;
 
   page.drawRectangle({
@@ -672,8 +673,8 @@ const drawRectoCanvas = (ctx, { student, classInfo, collegeInfo, logoImg, photoI
   d.text(`CARTE D'IDENTITE SCOLAIRE   ${year}`, W / 2, titleY, u(9), 'bold', '#000', 'center');
 
   const photoX = u(8);
-  const photoW = u(52);
-  const photoH = u(62);
+  const photoW = u(PHOTO_WIDTH_MM * MM);
+  const photoH = u(PHOTO_HEIGHT_MM * MM);
   const photoY = titleY - u(8) - photoH;
   d.rect(photoX, photoY, photoW, photoH, '#141414');
   if (photoImg) {
