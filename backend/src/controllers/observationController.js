@@ -5,14 +5,13 @@ import logger from '../config/logger.js';
 export const createObservation = async (req, res) => {
   try {
     const { classId } = req.params;
-    const { contenu } = req.body;
+    const { contenu, eleve_id } = req.body;
 
     if (!contenu) return res.status(400).json({ error: 'Le contenu est requis' });
 
     const classData = await Class.findById(classId);
     if (!classData) return res.status(404).json({ error: 'Classe non trouvée' });
 
-    // Directeur et secrétaire scopés à leur propre collège
     if (['directeur', 'secretaire'].includes(req.user.role) && req.user.college_id !== classData.college_id) {
       return res.status(403).json({ error: 'Accès non autorisé à cette classe' });
     }
@@ -22,7 +21,9 @@ export const createObservation = async (req, res) => {
       auteur_id: req.user.id,
       auteur_role: req.user.role,
       contenu,
+      eleve_id: eleve_id || null,
     });
+
 
     logger.info(`Observation created for class ${classId} by ${req.user.email}`);
     res.status(201).json(obs);

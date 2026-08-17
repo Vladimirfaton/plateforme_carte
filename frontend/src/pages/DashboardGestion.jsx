@@ -2,9 +2,9 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   IdCard, LogOut, School, Users, FileText, ChevronRight,
   ArrowLeft, Loader2, Download, Search, Image as ImageIcon, Check, X,
-  MessageSquare, Mail,
+  MessageSquare, Mail, Phone, Send,
 } from 'lucide-react';
-import { collegeAPI, classAPI, studentAPI } from '../services/api';
+import { collegeAPI, classAPI, studentAPI, assistanceAPI } from '../services/api';
 import ObservationsPanel from '../components/ObservationsPanel';
 import {
   generateBrouillonPDF, generateCollegeBrouillonPDF,
@@ -38,7 +38,7 @@ const resolveFileUrl = (value, folder) => {
   if (!value) return null;
   if (/^https?:\/\//i.test(value)) return value;
   const base = (import.meta.env.VITE_API_URL || '').replace(/\/api\/?$/, '');
-  return `${base}/uploads/${folder}/${value.split(/[\\/]/).pop()}`;
+  return `${base}/uploads/${folder}/${value.split(/[\\\/]/).pop()}`;
 };
 
 const photoUrl = (path) => resolveFileUrl(path, 'photos');
@@ -94,6 +94,250 @@ function StatCard({ icon: Icon, label, value, color = 'emerald' }) {
   );
 }
 
+// ─── Modal Assistance ─────────────────────────────────────────────────────────
+
+function AssistanceModal({ user, college, onClose }) {
+  const [form, setForm] = useState({
+    objet: '',
+    message: '',
+  });
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
+
+  const expediteur = [user.prenom, user.nom].filter(Boolean).join(' ');
+  const roleLabel = user.role === 'directeur' ? 'Directeur' : 'Secrétaire';
+  const collegeNom = college?.nom || '';
+
+  const handleSend = async () => {
+  if (!form.objet.trim() || !form.message.trim()) {
+    setError('Veuillez remplir l\'objet et le message.');
+    return;
+  }
+  setError('');
+  setSending(true);
+  try {
+    await assistanceAPI.send({
+      objet: form.objet,
+      message: form.message,
+      collegeNom: college?.nom || '',
+      nom: user.nom,
+      prenom: user.prenom,
+      email: user.email,
+      role: user.role,
+    });
+    setSent(true);
+  } catch (err) {
+    setError(err.response?.data?.error || 'Erreur lors de l\'envoi.');
+  } finally {
+    setSending(false);
+  }
+};
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+          <div className="flex items-center gap-2">
+            <Mail className="w-5 h-5 text-emerald-600" />
+            <h2 className="text-sm font-semibold text-slate-800">Contacter l'assistance</h2>
+          </div>
+          <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          {sent ? (
+            <div className="py-6 text-center">
+              <Check className="w-10 h-10 text-emerald-500 mx-auto mb-3" />
+              <p className="text-sm font-medium text-slate-800">Message préparé</p>
+              <p className="text-xs text-slate-500 mt-1">
+                Votre client mail s'est ouvert avec le message prérempli. Cliquez sur Envoyer dans votre messagerie.
+              </p>
+              <button
+                onClick={onClose}
+                className="mt-4 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium cursor-pointer"
+              >
+                Fermer
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Champs préremplis (lecture seule) */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">De</label>
+                  <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700">
+                    {expediteur} · {roleLabel}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Collège</label>
+                  <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 truncate">
+                    {collegeNom || '—'}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">Destinataire</label>
+                <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700">
+                  vladimirfaton@gmail.com
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">
+                  Objet <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={form.objet}
+                  onChange={e => setForm({ ...form, objet: e.target.value })}
+                  placeholder="Ex : Problème de connexion, Question sur les cartes..."
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">
+                  Message <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  rows={4}
+                  value={form.message}
+                  onChange={e => setForm({ ...form, message: e.target.value })}
+                  placeholder="Décrivez votre problème ou votre question..."
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+                />
+              </div>
+
+              {error && <p className="text-xs text-rose-600">{error}</p>}
+
+              <button
+                onClick={handleSend}
+                disabled={sending}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg text-sm font-medium cursor-pointer"
+              >
+                <Send className="w-4 h-4" />
+                {sending ? 'Préparation...' : 'Envoyer le message'}
+              </button>
+
+              {/* Contact téléphonique */}
+              <div className="flex items-center gap-3 pt-2 border-t border-slate-100">
+                <Phone className="w-4 h-4 text-slate-400 shrink-0" />
+                <div className="text-xs text-slate-500">
+                  Vous préférez appeler ?{' '}
+                  <a href="tel:+2290147611499" className="font-medium text-emerald-700 hover:underline">
+                    +229 01 47 61 14 99
+                  </a>
+                  {' '}ou{' '}
+                  <a href="tel:+2290157129474" className="font-medium text-emerald-700 hover:underline">
+                    +229 01 57 12 94 74
+                  </a>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Modal Observation par élève ─────────────────────────────────────────────
+
+function ObservationEleveModal({ student, classId, onClose, onSaved }) {
+  const prefix = `[${student.matricule} — ${student.nom} ${student.prenom}] `;
+  const [contenu, setContenu] = useState(prefix);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async () => {
+  if (!contenu.trim() || contenu.trim() === prefix.trim()) {
+    setError('Ajoutez un commentaire après l\'identifiant de l\'élève.');
+    return;
+  }
+  setError('');
+  setSubmitting(true);
+  try {
+    await classAPI.createObservation(classId, contenu.trim(), student.id); // on passe eleve_id
+    onSaved();
+    onClose();
+  } catch (err) {
+    setError(err.response?.data?.error || 'Erreur lors de l\'envoi.');
+  } finally {
+    setSubmitting(false);
+  }
+};
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-emerald-600" />
+            <h2 className="text-sm font-semibold text-slate-800">Observation</h2>
+          </div>
+          <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg">
+            <p className="text-xs text-slate-500 mb-0.5">Élève concerné</p>
+            <p className="text-sm font-medium text-slate-800">
+              {student.nom} {student.prenom}
+              <span className="ml-2 text-xs text-slate-400 font-normal">{student.matricule}</span>
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">
+              Observation <span className="text-rose-500">*</span>
+            </label>
+            <textarea
+              rows={4}
+              value={contenu}
+              onChange={e => setContenu(e.target.value)}
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none font-mono"
+              autoFocus
+              onFocus={e => {
+                // Positionner le curseur à la fin
+                const len = e.target.value.length;
+                e.target.setSelectionRange(len, len);
+              }}
+            />
+            <p className="text-xs text-slate-400 mt-1">
+              L'identifiant de l'élève est prérempli au début du texte.
+            </p>
+          </div>
+
+          {error && <p className="text-xs text-rose-600">{error}</p>}
+
+          <div className="flex gap-2">
+            <button
+              onClick={handleSubmit}
+              disabled={submitting}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg text-sm font-medium cursor-pointer"
+            >
+              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              {submitting ? 'Envoi...' : 'Enregistrer'}
+            </button>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium cursor-pointer"
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
 export default function DashboardGestion({ onLogout }) {
@@ -101,40 +345,32 @@ export default function DashboardGestion({ onLogout }) {
     try { return JSON.parse(sessionStorage.getItem('user') || '{}'); } catch { return {}; }
   }, []);
 
+  const isSecretaire = user.role === 'secretaire';
   const collegeId = user.college_id;
 
   const [college, setCollege]   = useState(null);
   const [classes, setClasses]   = useState([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState('');
+  const [showAssistance, setShowAssistance] = useState(false);
 
-  // Navigation : null = liste classes, objet = classe active
   const [activeClass, setActiveClass] = useState(null);
   const [students, setStudents]       = useState([]);
   const [studentsLoading, setStudentsLoading] = useState(false);
-
-  // ─── Chargement initial ──────────────────────────────────────────────────
 
   useEffect(() => {
     if (!collegeId) { setLoading(false); return; }
     (async () => {
       try {
-        // getById et getByCollege en parallèle.
-        // getById peut échouer si collegeRoutes est restreint admin-only —
-        // dans ce cas on fallback sur les infos du user (nom college non dispo,
-        // mais les classes chargent quand même).
         const [colResult, clsRes] = await Promise.allSettled([
           collegeAPI.getById(collegeId),
           classAPI.getByCollege(collegeId),
         ]);
-
         if (colResult.status === 'fulfilled') {
           setCollege(colResult.value.data);
         } else {
-          // Fallback minimal depuis sessionStorage — le header affiche quand même le nom
           setCollege({ id: collegeId, nom: user.college_nom || '' });
         }
-
         if (clsRes.status === 'fulfilled') {
           setClasses(trierClasses(clsRes.value.data || []));
         } else {
@@ -167,21 +403,21 @@ export default function DashboardGestion({ onLogout }) {
     setStudents([]);
   };
 
-  // ─── Stats globales ──────────────────────────────────────────────────────
-
-  const stats = useMemo(() => {
-    const totalEleves = classes.reduce((s, c) => s + (c.effectif ?? 0), 0);
-    return {
-      classes: classes.length,
-      eleves: totalEleves,
-    };
-  }, [classes]);
-
-  // ─── Render ──────────────────────────────────────────────────────────────
+  const stats = useMemo(() => ({
+    classes: classes.length,
+    eleves: classes.reduce((s, c) => s + (c.effectif ?? 0), 0),
+  }), [classes]);
 
   return (
     <div className="min-h-screen bg-[#f7faf8]">
-      {/* Header */}
+      {showAssistance && (
+        <AssistanceModal
+          user={user}
+          college={college}
+          onClose={() => setShowAssistance(false)}
+        />
+      )}
+
       <header className="sticky top-0 z-30 bg-white border-b border-slate-200">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -201,13 +437,13 @@ export default function DashboardGestion({ onLogout }) {
           </div>
 
           <div className="flex items-center gap-2">
-            <a
-              href={`mailto:assistance@fvs.bj?subject=Assistance - ${college?.nom || ''}`}
+            <button
+              onClick={() => setShowAssistance(true)}
               className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition cursor-pointer"
             >
               <Mail className="w-4 h-4" />
               Assistance
-            </a>
+            </button>
             <button
               onClick={onLogout}
               className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition cursor-pointer"
@@ -219,21 +455,18 @@ export default function DashboardGestion({ onLogout }) {
         </div>
       </header>
 
-      {/* Stats — visibles seulement sur la vue liste des classes */}
       {!activeClass && (
         <div className="bg-[#f7faf8] border-b border-slate-200">
           <div className="max-w-6xl mx-auto px-6 py-5">
-            <div className="grid grid-cols-2 sm:grid-cols-2 gap-3">
-              <StatCard icon={School}  label="Classes" value={stats.classes} color="emerald" />
-              <StatCard icon={Users}   label="Élèves"  value={stats.eleves}  color="cyan"    />
+            <div className="grid grid-cols-2 gap-3">
+              <StatCard icon={School} label="Classes" value={stats.classes} color="emerald" />
+              <StatCard icon={Users}  label="Élèves"  value={stats.eleves}  color="cyan"    />
             </div>
           </div>
         </div>
       )}
 
       <div className="max-w-6xl mx-auto px-6 py-8">
-
-        {/* Fil d'Ariane */}
         <div className="flex items-center gap-2 mb-5 text-sm">
           {activeClass ? (
             <>
@@ -262,11 +495,7 @@ export default function DashboardGestion({ onLogout }) {
         ) : (
           <>
             {!activeClass && (
-              <ClassesView
-                classes={classes}
-                college={college}
-                onOpen={openClass}
-              />
+              <ClassesView classes={classes} college={college} onOpen={openClass} />
             )}
             {activeClass && (
               <ClasseDetail
@@ -274,6 +503,7 @@ export default function DashboardGestion({ onLogout }) {
                 students={students}
                 loading={studentsLoading}
                 college={college}
+                isSecretaire={isSecretaire}
               />
             )}
           </>
@@ -286,10 +516,10 @@ export default function DashboardGestion({ onLogout }) {
 // ─── Vue liste des classes ────────────────────────────────────────────────────
 
 function ClassesView({ classes, college, onOpen }) {
-  const [search, setSearch] = useState('');
+  const [search, setSearch]       = useState('');
   const [generating, setGenerating] = useState(false);
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [error, setError]         = useState('');
+  const [notice, setNotice]       = useState('');
 
   const flash = (msg) => { setNotice(msg); setTimeout(() => setNotice(''), 4000); };
 
@@ -319,7 +549,6 @@ function ClassesView({ classes, college, onOpen }) {
       {error  && <Notice onClose={() => setError('')}>{error}</Notice>}
       {notice && <Notice type="success" onClose={() => setNotice('')}>{notice}</Notice>}
 
-      {/* Barre d'actions */}
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="relative mr-auto">
           <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -331,7 +560,6 @@ function ClassesView({ classes, college, onOpen }) {
             className="w-52 pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>
-
         <button
           onClick={handleBrouillonCollege}
           disabled={generating || !classes.length}
@@ -375,17 +603,16 @@ function ClassesView({ classes, college, onOpen }) {
 // ─── Détail d'une classe ──────────────────────────────────────────────────────
 
 const CLASS_TABS = [
-  { key: 'eleves',    label: 'Élèves',    icon: Users       },
-  { key: 'brouillon', label: 'Brouillon', icon: FileText    },
-  { key: 'observations', label: 'Observations', icon: MessageSquare },
+  { key: 'eleves',       label: 'Élèves',       icon: Users          },
+  { key: 'brouillon',   label: 'Brouillon',    icon: FileText       },
+  { key: 'observations', label: 'Observations', icon: MessageSquare  },
 ];
 
-function ClasseDetail({ cls, students, loading, college }) {
+function ClasseDetail({ cls, students, loading, college, isSecretaire }) {
   const [tab, setTab] = useState('eleves');
 
   return (
     <div>
-      {/* Tabs */}
       <div className="flex gap-1 mb-6 border-b border-slate-200">
         {CLASS_TABS.map(t => {
           const Icon = t.icon;
@@ -415,9 +642,9 @@ function ClasseDetail({ cls, students, loading, college }) {
         </div>
       ) : (
         <>
-          {tab === 'eleves'        && <ElevesTab students={students} />}
-          {tab === 'brouillon'     && <BrouillonTab cls={cls} students={students} college={college} />}
-          {tab === 'observations'  && <ObservationsTab cls={cls} />}
+          {tab === 'eleves'       && <ElevesTab students={students} classId={cls.id} isSecretaire={isSecretaire} />}
+          {tab === 'brouillon'    && <BrouillonTab cls={cls} students={students} college={college} />}
+          {tab === 'observations' && <ObservationsTab cls={cls} />}
         </>
       )}
     </div>
@@ -426,8 +653,12 @@ function ClasseDetail({ cls, students, loading, college }) {
 
 // ─── Tab Élèves ───────────────────────────────────────────────────────────────
 
-function ElevesTab({ students }) {
-  const [search, setSearch] = useState('');
+function ElevesTab({ students, classId, isSecretaire }) {
+  const [search, setSearch]   = useState('');
+  const [obsTarget, setObsTarget] = useState(null); // élève ciblé par la modal obs
+  const [obsNotice, setObsNotice] = useState('');
+
+  const flashObs = (msg) => { setObsNotice(msg); setTimeout(() => setObsNotice(''), 3000); };
 
   const visibles = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -441,6 +672,15 @@ function ElevesTab({ students }) {
 
   return (
     <div>
+      {obsTarget && (
+        <ObservationEleveModal
+          student={obsTarget}
+          classId={classId}
+          onClose={() => setObsTarget(null)}
+          onSaved={() => flashObs(`Observation enregistrée pour ${obsTarget.nom} ${obsTarget.prenom}`)}
+        />
+      )}
+
       <div className="flex items-center gap-3 mb-4">
         <div className="relative">
           <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -457,19 +697,26 @@ function ElevesTab({ students }) {
         </span>
       </div>
 
+      {obsNotice && (
+        <div className="mb-3 px-4 py-2 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-xs flex items-center gap-2">
+          <Check className="w-3.5 h-3.5 shrink-0" />
+          {obsNotice}
+        </div>
+      )}
+
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr className="text-left text-xs font-medium text-slate-500">
               <th className="px-4 py-3">Photo</th>
               <th className="px-4 py-3">Matricule</th>
-              <th className="px-4 py-3">Nom</th>
-              <th className="px-4 py-3">Prénom(s)</th>
+              <th className="px-4 py-3">Nom & Prénom</th>
               <th className="px-4 py-3">Sexe</th>
               <th className="px-4 py-3">Date de naissance</th>
               <th className="px-4 py-3">Lieu</th>
               <th className="px-4 py-3">Nationalité</th>
               <th className="px-4 py-3">Contact parent</th>
+              {isSecretaire && <th className="px-4 py-3 text-right">Action</th>}
             </tr>
           </thead>
           <tbody>
@@ -484,13 +731,24 @@ function ElevesTab({ students }) {
                   </div>
                 </td>
                 <td className="px-4 py-3 font-medium text-slate-800">{s.matricule}</td>
-                <td className="px-4 py-3 text-slate-700">{s.nom}</td>
-                <td className="px-4 py-3 text-slate-700">{s.prenom}</td>
+                <td className="px-4 py-3 text-slate-700">{s.nom} {s.prenom}</td>
                 <td className="px-4 py-3 text-slate-600">{s.sexe}</td>
                 <td className="px-4 py-3 text-slate-600">{formatDateFr(s.date_naissance) || '—'}</td>
                 <td className="px-4 py-3 text-slate-600">{s.lieu_naissance || '—'}</td>
                 <td className="px-4 py-3 text-slate-600">{s.nationalite || '—'}</td>
                 <td className="px-4 py-3 text-slate-600">{s.adresse || '—'}</td>
+                {isSecretaire && (
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={() => setObsTarget(s)}
+                      title="Ajouter une observation"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg cursor-pointer transition"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      Observation
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -509,8 +767,8 @@ function BrouillonTab({ cls, students, college }) {
 
   const flash = (msg) => { setNotice(msg); setTimeout(() => setNotice(''), 4000); };
 
-  const avecPhoto    = students.filter(s => s.photo_path).length;
-  const sansPhoto    = students.length - avecPhoto;
+  const avecPhoto = students.filter(s => s.photo_path).length;
+  const sansPhoto = students.length - avecPhoto;
 
   const exportPDF = async () => {
     setError('');
@@ -530,14 +788,12 @@ function BrouillonTab({ cls, students, college }) {
       {error  && <Notice onClose={() => setError('')}>{error}</Notice>}
       {notice && <Notice type="success" onClose={() => setNotice('')}>{notice}</Notice>}
 
-      {/* Stats photos */}
       <div className="grid grid-cols-3 gap-3 mb-5">
-        <StatCard icon={Users}     label="Élèves"      value={students.length} color="emerald" />
-        <StatCard icon={Check}     label="Avec photo"  value={avecPhoto}       color="cyan"    />
-        <StatCard icon={ImageIcon} label="Sans photo"  value={sansPhoto}       color={sansPhoto > 0 ? 'amber' : 'emerald'} />
+        <StatCard icon={Users}     label="Élèves"     value={students.length} color="emerald" />
+        <StatCard icon={Check}     label="Avec photo" value={avecPhoto}       color="cyan"    />
+        <StatCard icon={ImageIcon} label="Sans photo" value={sansPhoto}       color={sansPhoto > 0 ? 'amber' : 'emerald'} />
       </div>
 
-      {/* Action */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 mb-6">
         <p className="text-sm font-medium text-slate-800 mb-1">Exporter le brouillon</p>
         <p className="text-xs text-slate-500 mb-4">
@@ -553,7 +809,6 @@ function BrouillonTab({ cls, students, college }) {
         </button>
       </div>
 
-      {/* Aperçu liste élèves */}
       {!students.length ? (
         <Empty>Aucun élève dans cette classe.</Empty>
       ) : (
