@@ -4,9 +4,9 @@ import {
   FileText, CreditCard, LogOut, Trash2, Search, MapPin, Upload, Download,
   FileSpreadsheet, Image as ImageIcon, Check, X, Users, School, IdCard,
   ChevronRight, Plus, Pencil, ArrowLeft, Loader2, Printer, Settings2, FileDown,
-  KeyRound, Mail,
+  KeyRound, Mail,Bell,
 } from 'lucide-react';
-import api, { collegeAPI, classAPI, studentAPI, importAPI, FILE_BASE_URL } from '../services/api';
+import api, { collegeAPI, classAPI, studentAPI, importAPI, observationAPI, FILE_BASE_URL } from '../services/api';
 import ObservationsPanel from '../components/ObservationsPanel';
 import {
   generateBrouillonPDF, generateCollegeBrouillonPDF,
@@ -65,7 +65,40 @@ export default function Dashboard({ onLogout }) {
 
   const [showCollegeForm, setShowCollegeForm] = useState(false);
   const [editingCollege, setEditingCollege] = useState(null);
+    const [unreadObs, setUnreadObs] = useState([]);
+  const [showObsDropdown, setShowObsDropdown] = useState(false);
+  const obsDropdownRef = useRef(null);
 
+  useEffect(() => {
+    const fetchUnread = async () => {
+      try {
+        const res = await observationAPI.getUnread();
+        setUnreadObs(res.data.observations || []);
+      } catch {}
+    };
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Fermer le dropdown si clic en dehors
+  useEffect(() => {
+    const handler = (e) => {
+      if (obsDropdownRef.current && !obsDropdownRef.current.contains(e.target)) {
+        setShowObsDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const handleMarkAllRead = async () => {
+    try {
+      await observationAPI.markAsRead();
+      setUnreadObs([]);
+      setShowObsDropdown(false);
+    } catch {}
+  };
   useEffect(() => {
     api.get('/locations/departements')
       .then(r => setDepartments(r.data || []))
@@ -202,7 +235,7 @@ export default function Dashboard({ onLogout }) {
 
   return (
     <div className="min-h-screen bg-[#f7faf8]">
-      <header className="sticky top-0 z-30 bg-white border-b border-slate-200">
+            <header className="sticky top-0 z-30 bg-white border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-6 py-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-emerald-600 flex items-center justify-center">
@@ -213,13 +246,86 @@ export default function Dashboard({ onLogout }) {
               <p className="text-xs text-slate-500">Gestion complète des cartes d'identité scolaires</p>
             </div>
           </div>
-          <button
-            onClick={onLogout}
-            className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition cursor-pointer"
-          >
-            <LogOut className="w-4 h-4" />
-            Déconnexion
-          </button>
+
+          <div className="flex items-center gap-2">
+            {/* Cloche notifications observations */}
+            <div className="relative" ref={obsDropdownRef}>
+              <button
+                onClick={() => setShowObsDropdown(v => !v)}
+                className="relative flex items-center justify-center w-9 h-9 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                title="Observations non lues"
+              >
+                <Bell className="w-4 h-4" />
+                {unreadObs.length > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none">
+                    {unreadObs.length > 9 ? '9+' : unreadObs.length}
+                  </span>
+                )}
+              </button>
+
+              {showObsDropdown && (
+                <div className="absolute right-0 top-11 w-96 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+                    <span className="text-sm font-semibold text-slate-800">
+                      Observations
+                      {unreadObs.length > 0 && (
+                        <span className="ml-2 text-xs font-medium text-rose-500">
+                          {unreadObs.length} non lue{unreadObs.length > 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </span>
+                    {unreadObs.length > 0 && (
+                      <button
+                        onClick={handleMarkAllRead}
+                        className="text-xs text-emerald-600 hover:text-emerald-700 font-medium cursor-pointer"
+                      >
+                        Tout marquer lu
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
+                    {unreadObs.length === 0 ? (
+                      <p className="text-sm text-slate-400 text-center py-6">
+                        Aucune observation non lue
+                      </p>
+                    ) : (
+                      unreadObs.map((o) => (
+                        <div key={o.id} className="px-4 py-3 hover:bg-slate-50 transition">
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <span className="text-xs font-medium text-emerald-700 truncate">
+                              {o.college_nom}
+                            </span>
+                            <span className="text-xs text-slate-400 shrink-0">
+                              {new Date(o.created_at).toLocaleString('fr-FR', {
+                                day: '2-digit', month: '2-digit',
+                                hour: '2-digit', minute: '2-digit',
+                              })}
+                            </span>
+                          </div>
+                          <div className="text-xs text-slate-500 mb-1">
+                            {o.classe_code} ·{' '}
+                            {o.auteur_prenom || o.auteur_nom
+                              ? `${o.auteur_prenom || ''} ${o.auteur_nom || ''}`.trim()
+                              : o.auteur_role}
+                          </div>
+                          <p className="text-sm text-slate-700 line-clamp-2">{o.contenu}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={onLogout}
+              className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" />
+              Déconnexion
+            </button>
+          </div>
         </div>
       </header>
 
@@ -1687,7 +1793,7 @@ function BrouillonSection({ cls, students, collegeInfo, onRefresh }) {
         </div>
 
         <div className="w-80 hidden lg:block">
-          <ObservationsPanel classId={cls.id} />
+          <ObservationsPanel classId={cls.id} currentUserId={null} />
         </div>
       </div>
 

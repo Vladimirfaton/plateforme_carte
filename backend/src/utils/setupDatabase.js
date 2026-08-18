@@ -4,7 +4,9 @@ import logger from '../config/logger.js';
 const createTables = async () => {
   try {
     logger.info('Creating database tables...');
-
+    await pool.query('ALTER TABLE observations ADD COLUMN IF NOT EXISTS lu_par_admin BOOLEAN DEFAULT false');
+    await pool.query('ALTER TABLE observations ADD COLUMN IF NOT EXISTS eleve_id UUID REFERENCES eleves(id) ON DELETE SET NULL');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_observations_non_lues ON observations(lu_par_admin) WHERE lu_par_admin = false');
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id UUID PRIMARY KEY,

@@ -6,17 +6,17 @@ import {
   updateClass,
   deleteClass,
 } from '../controllers/classController.js';
-import { createObservation, listObservations } from '../controllers/observationController.js';
+import {
+  createObservation,
+  listObservations,
+  deleteObservation,
+} from '../controllers/observationController.js';
 import { authenticate, checkAccountActive, scopeToOwnCollege } from '../middleware/auth.js';
 import { Class } from '../models/Class.js';
 
 const router = express.Router();
-const resolveCollegeFromClass = async (req) => {
-  const cls = await Class.findById(req.params.classId);
-  return cls?.college_id ?? null;
-};
 
-// --- Routes admin uniquement (écriture) ---
+// --- Routes classes (écriture admin) ---
 router.post(
   '/:collegeId/classes',
   authenticate,
@@ -29,7 +29,6 @@ router.put(
   '/class/:classId',
   authenticate,
   checkAccountActive,
-  // scopeToOwnCollege dynamique : résout le college depuis la classe
   async (req, res, next) => {
     if (req.user.role !== 'admin') {
       const cls = await Class.findById(req.params.classId).catch(() => null);
@@ -83,7 +82,7 @@ router.get(
   getClassById
 );
 
-// --- Observations (secrétaire crée, directeur et admin aussi — géré dans le controller) ---
+// --- Observations ---
 router.post(
   '/class/:classId/observations',
   authenticate,
@@ -96,6 +95,13 @@ router.get(
   authenticate,
   checkAccountActive,
   listObservations
+);
+
+router.delete(
+  '/class/:classId/observations/:observationId',
+  authenticate,
+  checkAccountActive,
+  deleteObservation
 );
 
 export default router;

@@ -20,9 +20,16 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      sessionStorage.removeItem('token');
-      sessionStorage.removeItem('user');
-      window.location.href = '/login';
+      const isOnGestionPage = window.location.pathname.startsWith('/gestion') ||
+        window.location.pathname === '/activation-compte' ||
+        window.location.pathname === '/reactivation-compte';
+      const isLoginAttempt = error.config?.url?.includes('/auth/login');
+      
+      if (!isLoginAttempt) {
+        sessionStorage.removeItem('token');
+        sessionStorage.removeItem('user');
+        window.location.href = isOnGestionPage ? '/gestion/login' : '/login';
+      }
     }
     return Promise.reject(error);
   }
@@ -76,8 +83,13 @@ export const classAPI = {
   listObservations: (classId) => api.get(`/classes/class/${classId}/observations`),
   createObservation: (classId, contenu, eleveId = null) => 
   api.post(`/classes/class/${classId}/observations`, { contenu, eleve_id: eleveId }),
+  deleteObservation: (classId, observationId) =>
+  api.delete(`/classes/class/${classId}/observations/${observationId}`),
 };
-
+export const observationAPI = {
+  getUnread: () => api.get('/observations/non-lues'),
+  markAsRead: () => api.put('/observations/marquer-lues'),
+};
 export const studentAPI = {
   getByClass: (classId) => api.get(`/students/class/${classId}`),
   getByCollege: (collegeId) => api.get(`/students/college/${collegeId}`),
