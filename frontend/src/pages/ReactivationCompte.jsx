@@ -163,14 +163,14 @@ const widgetRef = useRef(null);
         </form>
 
         {paying && pricing && (
-          <kkiapay-widget
-            amount={pricing.amount}
-            key={pricing.kkiapayPublicKey}
-            data={JSON.stringify({ username })}
-            sandbox={pricing.sandbox ? 'true' : 'false'}
-            position="center"
-          />
-        )}
+  <kkiapay-widget
+    ref={widgetRef}
+    amount={pricing.amount}
+    data={JSON.stringify({ username })}
+    sandbox={pricing.sandbox ? 'true' : 'false'}
+    position="center"
+  />
+)}
       </div>
     </div>
   );
