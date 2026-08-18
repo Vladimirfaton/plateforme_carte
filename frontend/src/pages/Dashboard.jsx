@@ -835,7 +835,6 @@ function ClassGrid({ classes, onOpen, collegeId, collegeNom, collegeInfo, onRefr
   const [generatingCollege, setGeneratingCollege] = useState(false);
   const [notifyingCollege, setNotifyingCollege] = useState(false);
   const [notifyingCartesCollege, setNotifyingCartesCollege] = useState(false);
-  const [notifyingCartesCollege, setNotifyingCartesCollege] = useState(false);
   const [showNotifMenu, setShowNotifMenu] = useState(false);
   const notifMenuRef = useRef(null);
 
