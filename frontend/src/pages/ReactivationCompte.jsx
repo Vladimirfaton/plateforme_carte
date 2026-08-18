@@ -13,6 +13,7 @@ export default function ReactivationCompte({ onLoginSuccess }) {
   const [confirming, setConfirming] = useState(false);
   const [success, setSuccess] = useState(null); // { plainKey }
   const scriptLoaded = useRef(false);
+const widgetRef = useRef(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -69,7 +70,11 @@ export default function ReactivationCompte({ onLoginSuccess }) {
     setError('');
     setPaying(true);
   };
-
+  useEffect(() => {
+  if (widgetRef.current && pricing?.kkiapayPublicKey) {
+    widgetRef.current.setAttribute('key', pricing.kkiapayPublicKey);
+  }
+}, [paying, pricing]);
   if (success) {
     return (
       <div className="min-h-screen bg-[#f7faf8] flex items-center justify-center px-4">
