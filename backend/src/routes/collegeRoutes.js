@@ -19,6 +19,14 @@ import {
   notifierBrouillon,
   getNotificationsBrouillon,
 } from '../controllers/notificationBrouillonController.js';
+import {
+  notifierBrouillon,
+  getNotificationsBrouillon,
+} from '../controllers/notificationBrouillonController.js';
+import {
+  notifierCartes,
+  getNotificationsCartes,
+} from '../controllers/notificationCartesController.js';
 const router = express.Router();
 
 // Signature : en memoire (buffer) -> envoyee vers Supabase Storage dans le controller,
@@ -66,6 +74,19 @@ router.get(
   authenticate,
   authorize(['admin']),
   getNotificationsBrouillon
+);
+router.post(
+  '/:id/notifier-cartes',
+  authenticate,
+  authorize(['admin']),
+  notifierCartes
+);
+
+router.get(
+  '/:id/notifications-cartes',
+  authenticate,
+  authorize(['admin']),
+  getNotificationsCartes
 );
 
 export default router;

@@ -203,6 +203,52 @@ export const sendBrouillonReadyEmail = async (email, { role, collegeName, classe
   `;
   return sendSimpleEmail(email, subject, htmlContent);
 };
+const formatDatePassage = (isoString) => {
+  try {
+    return new Date(isoString).toLocaleString('fr-FR', {
+      dateStyle: 'full',
+      timeStyle: 'short',
+      timeZone: 'Africa/Porto-Novo',
+    });
+  } catch {
+    return isoString;
+  }
+};
+
+// Envoyé par l'admin pour notifier que les cartes d'une classe ou du collège sont prêtes
+export const sendCartesReadyEmail = async (email, { role, collegeName, classeCode, datePassage, loginUrl }) => {
+  const scope = classeCode ? `la classe <strong>${classeCode}</strong>` : `votre collège`;
+  const subject = classeCode
+    ? `Cartes prêtes — ${classeCode} · ${collegeName}`
+    : `Cartes prêtes — ${collegeName}`;
+  const dateFormatted = formatDatePassage(datePassage);
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background-color: #f7faf8; padding: 24px; border-radius: 10px;">
+        <h2 style="color: #059669; margin-bottom: 16px;">Cartes prêtes</h2>
+        <p style="color: #333; font-size: 15px;">
+          Bonjour <strong>${roleLabel(role)}</strong>,
+        </p>
+        <p style="color: #333; font-size: 15px;">
+          Les cartes d'identité scolaire de ${scope} du collège <strong>${collegeName}</strong>
+          sont prêtes.
+        </p>
+        <div style="background-color: #059669; padding: 16px; border-radius: 8px; text-align: center; margin: 20px 0;">
+          <p style="color: white; font-size: 12px; text-transform: uppercase; margin: 0 0 6px;">Date de passage</p>
+          <p style="color: white; font-size: 20px; font-weight: bold; margin: 0;">${dateFormatted}</p>
+        </div>
+        <p style="text-align: center; margin: 24px 0;">
+          <a href="${loginUrl}" style="background-color: #059669; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">
+            Accéder à mon espace
+          </a>
+        </p>
+        <p style="color: #999; font-size: 12px; text-align: center;">FVS - Plateforme de gestion scolaire</p>
+      </div>
+    </div>
+  `;
+  return sendSimpleEmail(email, subject, htmlContent);
+};
 
 export default {
   sendOtpEmail,
@@ -211,4 +257,5 @@ export default {
   sendReactivationEmail,
   sendLoginLinkEmail,
   sendBrouillonReadyEmail,
+  sendCartesReadyEmail,
 };

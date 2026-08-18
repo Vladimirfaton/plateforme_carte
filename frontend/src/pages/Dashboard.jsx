@@ -47,6 +47,16 @@ const photoUrl = (path) => resolveFileUrl(path, 'photos');
 
 const signatureUrl = (path) => resolveFileUrl(path, 'signatures');
 
+const signatureUrl = (path) => resolveFileUrl(path, 'signatures');
+
+const parseDatePassage = (str) => {
+  const match = str.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})$/);
+  if (!match) return null;
+  const [, day, month, year, hour, min] = match;
+  const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(min));
+  return isNaN(date.getTime()) ? null : date.toISOString();
+};
+
 export default function Dashboard({ onLogout }) {
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -826,6 +836,7 @@ function ClassGrid({ classes, onOpen, collegeId, collegeNom, collegeInfo, onRefr
   const [search, setSearch] = useState('');
   const [generatingCollege, setGeneratingCollege] = useState(false);
   const [notifyingCollege, setNotifyingCollege] = useState(false);
+  const [notifyingCartesCollege, setNotifyingCartesCollege] = useState(false);
 
   const [creatingComptes, setCreatingComptes] = useState(false);
   const [showSecretaireModal, setShowSecretaireModal] = useState(false);
@@ -948,6 +959,30 @@ function ClassGrid({ classes, onOpen, collegeId, collegeNom, collegeInfo, onRefr
       setNotifyingCollege(false);
     }
   };
+    const handleNotifyCartesCollege = async () => {
+    const dateStr = prompt('Date et heure de passage (ex: 25/08/2026 14:30) :');
+    if (!dateStr) return;
+
+    const datePassage = parseDatePassage(dateStr);
+    if (!datePassage) {
+      setError('Format de date invalide. Utilisez JJ/MM/AAAA HH:MM');
+      return;
+    }
+
+    if (!confirm(`Notifier le directeur et la secrétaire de ${collegeNom} que les cartes du collège sont prêtes (passage le ${dateStr}) ?`)) return;
+
+    setError('');
+    setNotifyingCartesCollege(true);
+    try {
+      await collegeAPI.notifierCartes(collegeId, { datePassage });
+      flash('Notification "Cartes prêtes" envoyée au directeur et à la secrétaire');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Erreur lors de l\'envoi');
+    } finally {
+      setNotifyingCartesCollege(false);
+    }
+  };
+
   const q = search.trim().toLowerCase();
   const visibles = q ? classes.filter(c => (c.code || '').toLowerCase().includes(q)) : classes;
 
@@ -992,7 +1027,29 @@ function ClassGrid({ classes, onOpen, collegeId, collegeNom, collegeInfo, onRefr
               ? <Loader2 className="w-4 h-4 animate-spin" />
               : <Send className="w-4 h-4" />}
             {notifyingCollege ? 'Envoi...' : 'Notifier'}
-          </button>         
+          </button>   
+          <button
+            onClick={handleNotifyCollege}
+            disabled={notifyingCollege || !classes.length}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:border-emerald-300 disabled:opacity-50 text-slate-700 rounded-lg text-sm font-medium cursor-pointer whitespace-nowrap"
+            title="Notifier directeur et secrétaire"
+          >
+            {notifyingCollege
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : <Send className="w-4 h-4" />}
+            {notifyingCollege ? 'Envoi...' : 'Notifier'}
+          </button>
+          <button
+            onClick={handleNotifyCartesCollege}
+            disabled={notifyingCartesCollege || !classes.length}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:border-emerald-300 disabled:opacity-50 text-slate-700 rounded-lg text-sm font-medium cursor-pointer whitespace-nowrap"
+            title="Notifier que les cartes du collège sont prêtes"
+          >
+            {notifyingCartesCollege
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : <Bell className="w-4 h-4" />}
+            {notifyingCartesCollege ? 'Envoi...' : 'Cartes prêtes'}
+          </button>    
           <button
             onClick={() => handleCreateComptes()}
             disabled={creatingComptes}
@@ -2139,7 +2196,22 @@ function CartesSection({ cls, students, collegeInfo }) {
 
   const year = getSchoolYear();
   const flash = (msg) => { setNotice(msg); setTimeout(() => setNotice(''), 4000); };
-
+  const [showNotifCartes, setShowNotifCartes] = useState(false);
+  const [datePassage, setDatePassage] = useState('');
+  const notifierCartes = async () => {
+  if (!datePassage) {
+    setError('Merci de renseigner la date de passage');
+    return;
+  }
+  await run('notif-cartes', async () => {
+    await collegeAPI.notifierCartes(collegeInfo.id, {
+      classeId: cls.id,
+      datePassage: new Date(datePassage).toISOString(),
+    });
+    setShowNotifCartes(false);
+    setDatePassage('');
+  }, 'Notification "Cartes prêtes" envoyée');
+};
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -2208,6 +2280,13 @@ function CartesSection({ cls, students, collegeInfo }) {
             <span className="text-slate-400"> · {pages} page{pages > 1 ? 's' : ''} A4 · année {year}</span>
           </div>
           <button
+            onClick={() => setShowNotifCartes(v => !v)}
+            className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 rounded-lg text-sm font-medium cursor-pointer"
+          >
+            <Bell className="w-4 h-4" />
+            Cartes prêtes
+          </button>
+          <button
             onClick={() => setShowSettings(v => !v)}
             className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 rounded-lg text-sm font-medium cursor-pointer"
           >
@@ -2240,7 +2319,32 @@ function CartesSection({ cls, students, collegeInfo }) {
             </div>
           </div>
         )}
-
+        {showNotifCartes && (
+  <div className="mb-5 p-4 bg-slate-50 border border-slate-200 rounded-lg">
+    <p className="text-sm font-medium text-slate-800 mb-3">
+      Notifier "Cartes prêtes" pour la classe {cls.code}
+    </p>
+    <div className="flex flex-wrap items-end gap-3">
+      <div>
+        <label className="block text-xs text-slate-500 mb-1">Date et heure de passage</label>
+        <input
+          type="datetime-local"
+          value={datePassage}
+          onChange={e => setDatePassage(e.target.value)}
+          className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        />
+      </div>
+      <button
+        onClick={notifierCartes}
+        disabled={!!busy}
+        className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg text-sm font-medium cursor-pointer"
+      >
+        {busy === 'notif-cartes' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bell className="w-4 h-4" />}
+        Envoyer
+      </button>
+    </div>
+  </div>
+)}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <button
             onClick={() => run('a4', () => generateFinalCardsPDF(target, cls, collegeInfo, { ...opts, layout: 'a4' }), 'PDF A4 généré')}

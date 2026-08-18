@@ -70,6 +70,10 @@ export const collegeAPI = {
   api.post(`/colleges/${id}/notifier-brouillon`, { classe_id: classeId }),
   getNotificationsBrouillon: (id) =>
   api.get(`/colleges/${id}/notifications-brouillon`),
+    notifierCartes: (id, { classeId = null, datePassage }) =>
+    api.post(`/colleges/${id}/notifier-cartes`, { classe_id: classeId, date_passage: datePassage }),
+  getNotificationsCartes: (id) =>
+    api.get(`/colleges/${id}/notifications-cartes`),
   // Comptes de gestion
   createManagementAccounts: (id, data) => api.post(`/colleges/${id}/comptes-gestion`, data),
   getManagementAccounts: (id) => api.get(`/colleges/${id}/comptes-gestion`),

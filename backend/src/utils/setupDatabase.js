@@ -143,6 +143,18 @@ const createTables = async () => {
     emails_sent INTEGER DEFAULT 0
   )
 `);
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS notifications_cartes (
+    id UUID PRIMARY KEY,
+    college_id UUID NOT NULL REFERENCES colleges(id) ON DELETE CASCADE,
+    classe_id UUID REFERENCES classes(id) ON DELETE SET NULL,
+    sent_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    sent_at TIMESTAMP DEFAULT NOW(),
+    emails_sent INTEGER DEFAULT 0,
+    date_passage TIMESTAMP
+  )
+`);
+await pool.query('CREATE INDEX IF NOT EXISTS idx_notif_cartes_college ON notifications_cartes(college_id)');
 await pool.query('CREATE INDEX IF NOT EXISTS idx_notif_brouillon_college ON notifications_brouillon(college_id)');
     await pool.query('CREATE INDEX IF NOT EXISTS idx_colleges_commune ON colleges(commune, departement)');
     await pool.query('CREATE INDEX IF NOT EXISTS idx_classes_college ON classes(college_id)');
