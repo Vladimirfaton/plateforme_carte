@@ -6,12 +6,12 @@ const router = express.Router();
 
 const verifyCronSecret = (req, res, next) => {
   const provided = req.headers['x-cron-secret'];
+  logger.info(`[cron debug] provided=${provided} expected_set=${!!process.env.CRON_SECRET}`);
   if (!process.env.CRON_SECRET || provided !== process.env.CRON_SECRET) {
     return res.status(401).json({ error: 'Non autorisé' });
   }
   next();
 };
-
 router.post('/expire-keys', verifyCronSecret, async (req, res) => {
   try {
     const count = await AccessKey.expireOutdatedKeys();
