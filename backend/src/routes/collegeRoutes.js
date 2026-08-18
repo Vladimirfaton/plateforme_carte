@@ -15,7 +15,10 @@ import {
   resendManagementActivationEmails,
 } from '../controllers/collegeController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
-
+import {
+  notifierBrouillon,
+  getNotificationsBrouillon,
+} from '../controllers/notificationBrouillonController.js';
 const router = express.Router();
 
 // Signature : en memoire (buffer) -> envoyee vers Supabase Storage dans le controller,
@@ -51,5 +54,18 @@ router.post('/:id/signature', authenticate, authorize(['admin']), signatureUploa
 router.post('/:id/comptes-gestion', authenticate, authorize(['admin']), createManagementAccounts);
 router.get('/:id/comptes-gestion', authenticate, authorize(['admin']), getManagementAccounts);
 router.post('/:id/comptes-gestion/resend', authenticate, authorize(['admin']), resendManagementActivationEmails);
+router.post(
+  '/:id/notifier-brouillon',
+  authenticate,
+  authorize(['admin']),
+  notifierBrouillon
+);
+
+router.get(
+  '/:id/notifications-brouillon',
+  authenticate,
+  authorize(['admin']),
+  getNotificationsBrouillon
+);
 
 export default router;

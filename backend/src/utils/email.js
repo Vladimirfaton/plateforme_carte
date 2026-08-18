@@ -89,7 +89,6 @@ export const sendSimpleEmail = async (email, subject, htmlContent) => {
 
 const roleLabel = (role) => (role === 'directeur' ? 'Directeur / Directrice' : 'Secrétaire');
 
-// Envoyé à la création des comptes de gestion (clé gratuite, 155 jours)
 export const sendActivationEmail = async (email, { role, collegeName, suggestedUsername, accessKey, activationUrl }) => {
   const subject = `Activation de votre espace FVS - ${collegeName}`;
   const htmlContent = `
@@ -108,8 +107,7 @@ export const sendActivationEmail = async (email, { role, collegeName, suggestedU
           <p style="color: white; font-size: 26px; font-weight: bold; letter-spacing: 3px; margin: 0;">${accessKey}</p>
         </div>
         <p style="color: #666; font-size: 13px;">
-          Cette clé est valable 155 jours. Cliquez ci-dessous pour activer votre compte
-          (choix de votre identifiant et de votre mot de passe) :
+          Cette clé est valable 155 jours. Cliquez ci-dessous pour activer votre compte :
         </p>
         <p style="text-align: center; margin: 24px 0;">
           <a href="${activationUrl}" style="background-color: #059669; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">
@@ -123,7 +121,6 @@ export const sendActivationEmail = async (email, { role, collegeName, suggestedU
   return sendSimpleEmail(email, subject, htmlContent);
 };
 
-// Envoyé après paiement validé (clé payante, 365 jours) — Phase paiement, prêt à réutiliser
 export const sendReactivationEmail = async (email, { collegeName, accessKey, reactivationUrl }) => {
   const subject = `Renouvellement de votre accès FVS - ${collegeName}`;
   const htmlContent = `
@@ -149,6 +146,7 @@ export const sendReactivationEmail = async (email, { collegeName, accessKey, rea
   `;
   return sendSimpleEmail(email, subject, htmlContent);
 };
+
 export const sendLoginLinkEmail = async (email, { role, collegeName, loginUrl }) => {
   const subject = `Votre espace FVS est activé - ${collegeName}`;
   const htmlContent = `
@@ -172,4 +170,45 @@ export const sendLoginLinkEmail = async (email, { role, collegeName, loginUrl })
   `;
   return sendSimpleEmail(email, subject, htmlContent);
 };
-export default { sendOtpEmail, sendSimpleEmail, sendActivationEmail, sendReactivationEmail, sendLoginLinkEmail };
+
+// Envoyé par l'admin pour notifier que le brouillon d'une classe ou du collège est prêt
+export const sendBrouillonReadyEmail = async (email, { role, collegeName, classeCode, loginUrl }) => {
+  const scope = classeCode ? `la classe <strong>${classeCode}</strong>` : `votre collège`;
+  const subject = classeCode
+    ? `Brouillon prêt — ${classeCode} · ${collegeName}`
+    : `Brouillon prêt — ${collegeName}`;
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background-color: #f7faf8; padding: 24px; border-radius: 10px;">
+        <h2 style="color: #059669; margin-bottom: 16px;">Brouillon disponible</h2>
+        <p style="color: #333; font-size: 15px;">
+          Bonjour <strong>${roleLabel(role)}</strong>,
+        </p>
+        <p style="color: #333; font-size: 15px;">
+          Le brouillon des fiches de ${scope} du collège <strong>${collegeName}</strong>
+          est disponible. Vous pouvez le consulter et le télécharger depuis votre espace de gestion.
+        </p>
+        <p style="color: #666; font-size: 13px;">
+          Pensez à vérifier les informations et à ajouter vos observations si nécessaire.
+        </p>
+        <p style="text-align: center; margin: 24px 0;">
+          <a href="${loginUrl}" style="background-color: #059669; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">
+            Accéder à mon espace
+          </a>
+        </p>
+        <p style="color: #999; font-size: 12px; text-align: center;">FVS - Plateforme de gestion scolaire</p>
+      </div>
+    </div>
+  `;
+  return sendSimpleEmail(email, subject, htmlContent);
+};
+
+export default {
+  sendOtpEmail,
+  sendSimpleEmail,
+  sendActivationEmail,
+  sendReactivationEmail,
+  sendLoginLinkEmail,
+  sendBrouillonReadyEmail,
+};

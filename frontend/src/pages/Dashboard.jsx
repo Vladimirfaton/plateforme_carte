@@ -4,7 +4,7 @@ import {
   FileText, CreditCard, LogOut, Trash2, Search, MapPin, Upload, Download,
   FileSpreadsheet, Image as ImageIcon, Check, X, Users, School, IdCard,
   ChevronRight, Plus, Pencil, ArrowLeft, Loader2, Printer, Settings2, FileDown,
-  KeyRound, Mail,Bell,
+  KeyRound, Mail,Bell,Send,
 } from 'lucide-react';
 import api, { collegeAPI, classAPI, studentAPI, importAPI, observationAPI, FILE_BASE_URL } from '../services/api';
 import ObservationsPanel from '../components/ObservationsPanel';
@@ -825,6 +825,7 @@ function ClassGrid({ classes, onOpen, collegeId, collegeNom, collegeInfo, onRefr
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [generatingCollege, setGeneratingCollege] = useState(false);
+  const [notifyingCollege, setNotifyingCollege] = useState(false);
 
   const [creatingComptes, setCreatingComptes] = useState(false);
   const [showSecretaireModal, setShowSecretaireModal] = useState(false);
@@ -934,7 +935,19 @@ function ClassGrid({ classes, onOpen, collegeId, collegeNom, collegeInfo, onRefr
       setGeneratingCollege(false);
     }
   };
-
+  const handleNotifyCollege = async () => {
+    if (!confirm(`Notifier le directeur et la secrétaire de ${collegeNom} que le brouillon du collège est prêt ?`)) return;
+    setError('');
+    setNotifyingCollege(true);
+    try {
+      await collegeAPI.notifierBrouillon(collegeId);
+      flash('Notification envoyée au directeur et à la secrétaire');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Erreur lors de l\'envoi');
+    } finally {
+      setNotifyingCollege(false);
+    }
+  };
   const q = search.trim().toLowerCase();
   const visibles = q ? classes.filter(c => (c.code || '').toLowerCase().includes(q)) : classes;
 
@@ -969,7 +982,17 @@ function ClassGrid({ classes, onOpen, collegeId, collegeNom, collegeInfo, onRefr
             <Download className="w-4 h-4" />
             {generatingCollege ? 'Génération...' : 'Brouillon du collège'}
           </button>
-
+          <button
+            onClick={handleNotifyCollege}
+            disabled={notifyingCollege || !classes.length}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:border-emerald-300 disabled:opacity-50 text-slate-700 rounded-lg text-sm font-medium cursor-pointer whitespace-nowrap"
+            title="Notifier directeur et secrétaire"
+          >
+            {notifyingCollege
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : <Send className="w-4 h-4" />}
+            {notifyingCollege ? 'Envoi...' : 'Notifier'}
+          </button>         
           <button
             onClick={() => handleCreateComptes()}
             disabled={creatingComptes}
@@ -1681,6 +1704,7 @@ function BrouillonSection({ cls, students, collegeInfo, onRefresh }) {
   const [editingStudent, setEditingStudent] = useState(null);
   const [editData, setEditData] = useState({});
   const [generating, setGenerating] = useState(false);
+  const [notifying, setNotifying] = useState(false);
 
   const flash = (msg) => { setNotice(msg); setTimeout(() => setNotice(''), 4000); };
 
@@ -1726,19 +1750,45 @@ function BrouillonSection({ cls, students, collegeInfo, onRefresh }) {
       setGenerating(false);
     }
   };
+    const notifyReady = async () => {
+    if (!confirm('Envoyer une notification "brouillon prêt" au directeur et à la secrétaire ?')) return;
+    setError('');
+    setNotifying(true);
+    try {
+      await collegeAPI.notifierBrouillon(collegeInfo.id, cls.id);
+      flash('Notification envoyée au directeur et à la secrétaire');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Erreur lors de l\'envoi de la notification');
+    } finally {
+      setNotifying(false);
+    }
+  };
 
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
         <p className="text-sm text-slate-500">{students.length} élève{students.length > 1 ? 's' : ''}</p>
-        <button
-          onClick={exportPDF}
-          disabled={generating || !students.length}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg text-sm font-medium cursor-pointer"
-        >
-          <Download className="w-4 h-4" />
-          {generating ? 'Génération' : 'Exporter PDF (A4 paysage)'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={exportPDF}
+            disabled={generating || !students.length}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg text-sm font-medium cursor-pointer"
+          >
+            <Download className="w-4 h-4" />
+            {generating ? 'Génération' : 'Exporter PDF (A4 paysage)'}
+          </button>
+          <button
+            onClick={notifyReady}
+            disabled={notifying || !students.length}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:border-emerald-300 disabled:opacity-50 text-slate-700 rounded-lg text-sm font-medium cursor-pointer"
+            title="Notifier le directeur et la secrétaire que le brouillon est prêt"
+          >
+            {notifying
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : <Send className="w-4 h-4" />}
+            {notifying ? 'Envoi...' : 'Notifier'}
+          </button>
+        </div>
       </div>
 
       {error && <Notice onClose={() => setError('')}>{error}</Notice>}
