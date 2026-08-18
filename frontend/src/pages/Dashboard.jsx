@@ -1025,17 +1025,6 @@ function ClassGrid({ classes, onOpen, collegeId, collegeNom, collegeInfo, onRefr
               ? <Loader2 className="w-4 h-4 animate-spin" />
               : <Send className="w-4 h-4" />}
             {notifyingCollege ? 'Envoi...' : 'Notifier'}
-          </button>   
-          <button
-            onClick={handleNotifyCollege}
-            disabled={notifyingCollege || !classes.length}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:border-emerald-300 disabled:opacity-50 text-slate-700 rounded-lg text-sm font-medium cursor-pointer whitespace-nowrap"
-            title="Notifier directeur et secrétaire"
-          >
-            {notifyingCollege
-              ? <Loader2 className="w-4 h-4 animate-spin" />
-              : <Send className="w-4 h-4" />}
-            {notifyingCollege ? 'Envoi...' : 'Notifier'}
           </button>
           <button
             onClick={handleNotifyCartesCollege}
