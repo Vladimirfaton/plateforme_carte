@@ -48,6 +48,9 @@ app.get('/health', (req, res) => {
 });
 
 app.use(notFound);
+app.get('/', (req, res) => {
+  res.json({ status: 'ok', service: 'FVS backend' });
+});
 app.use(errorHandler);
 
 app.listen(PORT, () => {

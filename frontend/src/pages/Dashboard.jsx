@@ -4,7 +4,7 @@ import {
   FileText, CreditCard, LogOut, Trash2, Search, MapPin, Upload, Download,
   FileSpreadsheet, Image as ImageIcon, Check, X, Users, School, IdCard,
   ChevronRight, Plus, Pencil, ArrowLeft, Loader2, Printer, Settings2, FileDown,
-  KeyRound, Mail,Bell,Send,
+  KeyRound, Mail,Bell,Send, ChevronDown,
 } from 'lucide-react';
 import api, { collegeAPI, classAPI, studentAPI, importAPI, observationAPI, FILE_BASE_URL } from '../services/api';
 import ObservationsPanel from '../components/ObservationsPanel';
@@ -835,7 +835,19 @@ function ClassGrid({ classes, onOpen, collegeId, collegeNom, collegeInfo, onRefr
   const [generatingCollege, setGeneratingCollege] = useState(false);
   const [notifyingCollege, setNotifyingCollege] = useState(false);
   const [notifyingCartesCollege, setNotifyingCartesCollege] = useState(false);
+  const [notifyingCartesCollege, setNotifyingCartesCollege] = useState(false);
+  const [showNotifMenu, setShowNotifMenu] = useState(false);
+  const notifMenuRef = useRef(null);
 
+  useEffect(() => {
+    const handler = (e) => {
+      if (notifMenuRef.current && !notifMenuRef.current.contains(e.target)) {
+        setShowNotifMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
   const [creatingComptes, setCreatingComptes] = useState(false);
   const [showSecretaireModal, setShowSecretaireModal] = useState(false);
   const [secretaireModalForm, setSecretaireModalForm] = useState({
@@ -1007,7 +1019,7 @@ function ClassGrid({ classes, onOpen, collegeId, collegeNom, collegeInfo, onRefr
             />
           </div>
 
-          <button
+                   <button
             onClick={handleCollegeBrouillon}
             disabled={generatingCollege || !classes.length}
             className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed text-slate-700 rounded-lg text-sm font-medium cursor-pointer whitespace-nowrap"
@@ -1015,28 +1027,48 @@ function ClassGrid({ classes, onOpen, collegeId, collegeNom, collegeInfo, onRefr
             <Download className="w-4 h-4" />
             {generatingCollege ? 'Génération...' : 'Brouillon du collège'}
           </button>
-          <button
-            onClick={handleNotifyCollege}
-            disabled={notifyingCollege || !classes.length}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:border-emerald-300 disabled:opacity-50 text-slate-700 rounded-lg text-sm font-medium cursor-pointer whitespace-nowrap"
-            title="Notifier directeur et secrétaire"
-          >
-            {notifyingCollege
-              ? <Loader2 className="w-4 h-4 animate-spin" />
-              : <Send className="w-4 h-4" />}
-            {notifyingCollege ? 'Envoi...' : 'Notifier'}
-          </button>
-          <button
-            onClick={handleNotifyCartesCollege}
-            disabled={notifyingCartesCollege || !classes.length}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:border-emerald-300 disabled:opacity-50 text-slate-700 rounded-lg text-sm font-medium cursor-pointer whitespace-nowrap"
-            title="Notifier que les cartes du collège sont prêtes"
-          >
-            {notifyingCartesCollege
-              ? <Loader2 className="w-4 h-4 animate-spin" />
-              : <Bell className="w-4 h-4" />}
-            {notifyingCartesCollege ? 'Envoi...' : 'Cartes prêtes'}
-          </button>    
+
+          <div className="relative" ref={notifMenuRef}>
+            <button
+              onClick={() => setShowNotifMenu(v => !v)}
+              disabled={!classes.length}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:border-emerald-300 disabled:opacity-50 text-slate-700 rounded-lg text-sm font-medium cursor-pointer whitespace-nowrap"
+            >
+              <Bell className="w-4 h-4" />
+              Notifications
+              <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${showNotifMenu ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showNotifMenu && (
+              <div className="absolute left-0 top-11 w-64 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden py-1.5">
+                <button
+                  onClick={() => { setShowNotifMenu(false); handleNotifyCollege(); }}
+                  disabled={notifyingCollege}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 cursor-pointer text-left"
+                >
+                  {notifyingCollege ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4 text-slate-400" />}
+                  {notifyingCollege ? 'Envoi...' : 'Notifier brouillon prêt'}
+                </button>
+                <button
+                  onClick={() => { setShowNotifMenu(false); handleNotifyCartesCollege(); }}
+                  disabled={notifyingCartesCollege}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 cursor-pointer text-left"
+                >
+                  {notifyingCartesCollege ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4 text-slate-400" />}
+                  {notifyingCartesCollege ? 'Envoi...' : 'Cartes prêtes'}
+                </button>
+                <button
+                  onClick={() => { setShowNotifMenu(false); handleResendManagementActivationEmails(); }}
+                  disabled={creatingComptes}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 cursor-pointer text-left"
+                >
+                  {creatingComptes ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4 text-slate-400" />}
+                  {creatingComptes ? 'Envoi...' : 'Renvoyer lien activation'}
+                </button>
+              </div>
+            )}
+          </div>
+
           <button
             onClick={() => handleCreateComptes()}
             disabled={creatingComptes}
@@ -1047,21 +1079,12 @@ function ClassGrid({ classes, onOpen, collegeId, collegeNom, collegeInfo, onRefr
           </button>
 
           <button
-            onClick={handleResendManagementActivationEmails}
-            disabled={creatingComptes}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:border-slate-300 disabled:opacity-50 text-slate-700 rounded-lg text-sm font-medium cursor-pointer whitespace-nowrap"
-          >
-            {creatingComptes ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
-            {creatingComptes ? 'Envoi...' : 'Renvoyer liens'}
-          </button>
-
-          <button
             onClick={showForm ? reset : openCreate}
             className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium cursor-pointer whitespace-nowrap"
           >
             <Plus className="w-4 h-4" />
             {showForm ? 'Fermer' : 'Créer une classe'}
-          </button>
+          </button> 
         </div>
       </div>
 
