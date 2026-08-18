@@ -12,6 +12,8 @@ import locationRoutes from './routes/locationRoutes.js';
 import assistanceRoutes from './routes/assistanceRoutes.js';
 import observationRoutes from './routes/observationRoutes.js';
 import cronRoutes from './routes/cronRoutes.js';
+import configRoutes from './routes/configRoutes.js';
+import webhookRoutes from './routes/webhookRoutes.js';
 
 dotenv.config();
 
@@ -42,6 +44,8 @@ app.use('/api/locations', locationRoutes);
 app.use('/api/assistance', assistanceRoutes);
 app.use('/api/observations', observationRoutes);
 app.use('/api/cron', cronRoutes);
+app.use('/api/config', configRoutes);
+app.use('/api/webhooks', webhookRoutes);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

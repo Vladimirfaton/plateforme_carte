@@ -7,9 +7,9 @@ import {
   resendOtp,
   loginGestion,
   activateAccount,
-  reactivateAccount,
   checkUsernameAvailability,
 } from '../controllers/authController.js';
+import { confirmReactivationPayment } from '../controllers/paymentController.js';
 import { authenticate } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -23,7 +23,7 @@ router.get('/verify', authenticate, verifyToken);
 // Comptes de gestion (directeur / secrétaire) — pas d'OTP
 router.post('/login-gestion', loginGestion);
 router.post('/activation-compte', activateAccount);
-router.post('/reactivation-compte', reactivateAccount);
+router.post('/reactivation-paiement', confirmReactivationPayment);
 router.get('/username-disponible', checkUsernameAvailability);
 
 export default router;

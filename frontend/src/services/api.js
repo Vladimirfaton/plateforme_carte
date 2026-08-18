@@ -46,7 +46,7 @@ export const authAPI = {
   // Comptes de gestion (directeur/secrétaire)
   loginGestion: (username, password) => api.post('/auth/login-gestion', { username, password }),
   activateAccount: (data) => api.post('/auth/activation-compte', data),
-  reactivateAccount: (data) => api.post('/auth/reactivation-compte', data),
+  confirmReactivationPayment: (data) => api.post('/auth/reactivation-paiement', data),
   checkUsername: (username) => api.get('/auth/username-disponible', { params: { username } }),
 };
 
@@ -133,5 +133,8 @@ export const importAPI = {
 };
 export const assistanceAPI = {
   send: (data) => api.post('/assistance/send', data),
+};
+export const configAPI = {
+  getPricing: () => api.get('/config/pricing'),
 };
 export default api;
