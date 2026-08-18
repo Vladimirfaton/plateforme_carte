@@ -20,10 +20,6 @@ import {
   getNotificationsBrouillon,
 } from '../controllers/notificationBrouillonController.js';
 import {
-  notifierBrouillon,
-  getNotificationsBrouillon,
-} from '../controllers/notificationBrouillonController.js';
-import {
   notifierCartes,
   getNotificationsCartes,
 } from '../controllers/notificationCartesController.js';
