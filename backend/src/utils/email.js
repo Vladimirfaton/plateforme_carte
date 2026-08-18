@@ -186,7 +186,7 @@ export const sendBrouillonReadyEmail = async (email, { role, collegeName, classe
           Bonjour <strong>${roleLabel(role)}</strong>,
         </p>
         <p style="color: #333; font-size: 15px;">
-          Le brouillon des fiches de ${scope} du collège <strong>${collegeName}</strong>
+          Le brouillon des fiches de ${scope} <strong>${collegeName}</strong>
           est disponible. Vous pouvez le consulter et le télécharger depuis votre espace de gestion.
         </p>
         <p style="color: #666; font-size: 13px;">
@@ -231,7 +231,7 @@ export const sendCartesReadyEmail = async (email, { role, collegeName, classeCod
           Bonjour <strong>${roleLabel(role)}</strong>,
         </p>
         <p style="color: #333; font-size: 15px;">
-          Les cartes d'identité scolaire de ${scope} du collège <strong>${collegeName}</strong>
+          Les cartes d'identité scolaire de ${scope} <strong>${collegeName}</strong>
           sont prêtes.
         </p>
         <div style="background-color: #059669; padding: 16px; border-radius: 8px; text-align: center; margin: 20px 0;">
