@@ -47,8 +47,6 @@ const photoUrl = (path) => resolveFileUrl(path, 'photos');
 
 const signatureUrl = (path) => resolveFileUrl(path, 'signatures');
 
-const signatureUrl = (path) => resolveFileUrl(path, 'signatures');
-
 const parseDatePassage = (str) => {
   const match = str.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})$/);
   if (!match) return null;
