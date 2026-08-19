@@ -7,7 +7,6 @@ import { sendOtpEmail, sendLoginLinkEmail } from '../utils/email.js';
 import { College } from '../models/College.js';
 import { normalizeUsername } from '../utils/username.js';
 import { isValidPassword } from '../utils/validators.js';
-import { College } from '../models/College.js';
 import { verifyReactivationToken } from '../utils/reactivationToken.js';
 
 export const login = async (req, res) => {
