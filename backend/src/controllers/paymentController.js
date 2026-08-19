@@ -1,13 +1,14 @@
-import jwt from 'jsonwebtoken';
 import { kkiapay } from '@kkiapay-org/nodejs-sdk';
 import { User } from '../models/User.js';
 import { AccessKey } from '../models/AccessKey.js';
 import { Payment } from '../models/Payment.js';
 import { College } from '../models/College.js';
 import { sendReactivationEmail } from '../utils/email.js';
-import { normalizeUsername } from '../utils/username.js';
+import { verifyReactivationToken } from '../utils/reactivationToken.js';
 import logger from '../config/logger.js';
-
+const tx = await k.verify(transactionId);
+logger.info(`[DEBUG kkiapay] réponse verify: ${JSON.stringify(tx)}`);
+const collegeId = tx.partnerId;
 const RENEWAL_PRICE_XOF = Number(process.env.RENEWAL_PRICE_XOF || 15000);
 
 function getKkiapayClient() {
@@ -19,23 +20,9 @@ function getKkiapayClient() {
   });
 }
 
-function signToken(user) {
-  return jwt.sign(
-    {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      college_id: user.college_id,
-      username: user.username,
-    },
-    process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRE || '7d' }
-  );
-}
-
-// Coeur partagé (client callback + webhook). expectedUser = null → on retrouve
-// l'utilisateur via l'email renvoyé par KKiaPay (cas webhook).
-async function processTransaction(transactionId, expectedUser) {
+// Coeur partagé (callback client + webhook). La clé étant partagée, on
+// réactive TOUS les comptes gestion (directeur + secrétaire) du collège.
+async function processTransaction(transactionId, collegeId) {
   const existing = await Payment.findByTransactionId(transactionId);
   if (existing) {
     return { alreadyProcessed: true, payment: existing };
@@ -51,70 +38,63 @@ async function processTransaction(transactionId, expectedUser) {
     throw new Error('AMOUNT_MISMATCH');
   }
 
-  const user = expectedUser || (await User.findByEmail(tx.client?.email));
-  if (!user || !['directeur', 'secretaire'].includes(user.role)) {
-    throw new Error('USER_NOT_FOUND');
-  }
-
-  const pendingKey = await AccessKey.createPending(user.college_id, 'paid');
+  const pendingKey = await AccessKey.createPending(collegeId, 'paid');
   await AccessKey.activate(pendingKey.id, 'paid');
-  const reactivatedUser = await User.reactivate(user.id);
+  const reactivatedUsers = await User.reactivateByCollege(collegeId);
 
   const payment = await Payment.create({
-    collegeId: user.college_id,
-    userId: user.id,
+    collegeId,
+    userId: null,
     transactionId,
     amount: tx.amount,
     status: 'success',
   });
 
   try {
-    const college = await College.findById(user.college_id);
-    const reactivationUrl = `${(process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '')}/gestion/login`;
-    await sendReactivationEmail(reactivatedUser.email, {
-      collegeName: college?.nom || '',
-      accessKey: pendingKey.plainKey,
-      reactivationUrl,
-    });
+    const college = await College.findById(collegeId);
+    const loginUrl = `${(process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '')}/gestion/login`;
+    await Promise.all(
+      reactivatedUsers.map((u) =>
+        sendReactivationEmail(u.email, {
+          collegeName: college?.nom || '',
+          accessKey: pendingKey.plainKey,
+          reactivationUrl: loginUrl,
+        })
+      )
+    );
   } catch (mailErr) {
     logger.error(`Reactivation email failed: ${mailErr.message}`);
   }
 
-  return { alreadyProcessed: false, payment, reactivatedUser, plainKey: pendingKey.plainKey };
+  return { alreadyProcessed: false, payment, reactivatedUsers, plainKey: pendingKey.plainKey };
 }
 
 // Appelé par le frontend juste après le callback de succès du widget KKiaPay
 export const confirmReactivationPayment = async (req, res) => {
   try {
-    const { username, password, transactionId } = req.body;
-    if (!username || !password || !transactionId) {
-      return res.status(400).json({ error: 'Tous les champs sont requis' });
+    const { token, transactionId } = req.body;
+    if (!token || !transactionId) {
+      return res.status(400).json({ error: 'Paramètres manquants' });
     }
 
-    const user = await User.findByUsername(normalizeUsername(username));
-    if (!user || !['directeur', 'secretaire'].includes(user.role)) {
-      return res.status(404).json({ error: 'Compte non trouvé' });
-    }
-    if (user.status !== 'expired') {
-      return res.status(409).json({ error: "Ce compte n'est pas en attente de renouvellement" });
-    }
-    const validPassword = await User.verifyPassword(password, user.password_hash);
-    if (!validPassword) {
-      return res.status(401).json({ error: 'Mot de passe incorrect' });
+    let collegeId;
+    try {
+      collegeId = verifyReactivationToken(token);
+    } catch {
+      return res.status(401).json({ error: 'Lien de renouvellement invalide ou expiré' });
     }
 
-    const result = await processTransaction(transactionId, user);
-
-    if (result.alreadyProcessed) {
-      // Le webhook est arrivé en premier — le compte est déjà réactivé, on redonne juste un token
-      const freshUser = await User.findById(user.id);
-      return res.json({ token: signToken(freshUser), user: freshUser, plainKey: null, alreadyProcessed: true });
+    const accounts = await User.findByCollege(collegeId);
+    const hasExpired = accounts.some((u) => u.status === 'expired');
+    if (!hasExpired) {
+      return res.status(409).json({ error: "Aucun compte de ce collège n'est en attente de renouvellement" });
     }
+
+    const result = await processTransaction(transactionId, collegeId);
 
     res.json({
-      token: signToken(result.reactivatedUser),
-      user: result.reactivatedUser,
-      plainKey: result.plainKey,
+      plainKey: result.alreadyProcessed ? null : result.plainKey,
+      alreadyProcessed: !!result.alreadyProcessed,
     });
   } catch (error) {
     logger.error(`Reactivation payment error: ${error.message}`);
@@ -128,7 +108,8 @@ export const confirmReactivationPayment = async (req, res) => {
   }
 };
 
-// Filet de sécurité — appelé directement par KKiaPay, indépendamment du client
+// Filet de sécurité — appelé directement par KKiaPay, indépendamment du client.
+// Le collège est retrouvé via `partnerId`, transmis lors de l'ouverture du widget.
 export const kkiapayWebhook = async (req, res) => {
   try {
     const signature = req.headers['x-kkiapay-secret'];
@@ -142,11 +123,19 @@ export const kkiapayWebhook = async (req, res) => {
       return res.status(400).json({ error: 'transactionId manquant' });
     }
 
-    await processTransaction(transactionId, null);
+    const k = getKkiapayClient();
+    const tx = await k.verify(transactionId);
+    const collegeId = tx.partnerId;
+
+    if (!collegeId) {
+      logger.warn(`KKiaPay webhook: partnerId manquant pour la transaction ${transactionId}`);
+      return res.status(200).json({ received: true, note: 'partnerId manquant' });
+    }
+
+    await processTransaction(transactionId, collegeId);
     res.json({ received: true });
   } catch (error) {
     logger.error(`KKiaPay webhook error: ${error.message}`);
-    // 200 quand même pour éviter les retries agressifs de KKiaPay sur des erreurs métier
     res.status(200).json({ received: true, note: error.message });
   }
 };

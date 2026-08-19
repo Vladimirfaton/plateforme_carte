@@ -74,8 +74,8 @@ export class AccessKey {
     return result.rows[0];
   }
 
-  // Appelée par la tâche planifiée (cron, Phase 4) — vérifie en UTC
-  // toutes les clés actives expirées et bascule les comptes liés en 'expired'.
+    // ⚠️ Changement de contrat : retourne désormais un tableau de college_id
+  // (au lieu d'un nombre) pour permettre l'envoi ciblé des emails d'expiration.
   static async expireOutdatedKeys() {
     const expired = await query(
       `UPDATE access_keys SET status = 'expired'
@@ -83,8 +83,9 @@ export class AccessKey {
        RETURNING college_id`
     );
 
+    let collegeIds = [];
     if (expired.rows.length > 0) {
-      const collegeIds = expired.rows.map((r) => r.college_id);
+      collegeIds = [...new Set(expired.rows.map((r) => r.college_id))];
       await query(
         `UPDATE users SET status = 'expired', updated_at = CURRENT_TIMESTAMP
          WHERE college_id = ANY($1::uuid[]) AND role IN ('directeur', 'secretaire')`,
@@ -92,7 +93,7 @@ export class AccessKey {
       );
     }
 
-    return expired.rows.length;
+    return collegeIds;
   }
 }
 

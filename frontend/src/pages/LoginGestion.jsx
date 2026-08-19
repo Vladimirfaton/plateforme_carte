@@ -1,9 +1,12 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { IdCard, Loader2 } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { IdCard, Loader2, AlertTriangle } from 'lucide-react';
 import { authAPI } from '../services/api';
 
 export default function LoginGestion({ onLoginSuccess }) {
+  const [searchParams] = useSearchParams();
+  const wasExpired = searchParams.get('expired') === '1';
+
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -45,17 +48,24 @@ export default function LoginGestion({ onLoginSuccess }) {
           </div>
         </div>
 
+        {wasExpired && !error && (
+          <div className="mb-4 flex items-start gap-2 px-4 py-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-sm">
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>Votre accès a expiré et votre session a été fermée. Un lien de renouvellement a été envoyé par email au directeur ou à la directrice.</span>
+          </div>
+        )}
+
         {error && (
           <div className="mb-4 px-4 py-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-sm">
             {error}
             {errorCode === 'ACCOUNT_PENDING' && (
               <div className="mt-2">
-                <Link to="/activation-compte" className="underline font-medium">Activer mon compte</Link>
+                Activez votre compte via le lien reçu par email.
               </div>
             )}
             {errorCode === 'ACCESS_EXPIRED' && (
               <div className="mt-2">
-                <Link to="/reactivation-compte" className="underline font-medium">Renouveler mon accès</Link>
+                Un lien de renouvellement a été envoyé par email au directeur ou à la directrice. Vous pouvez aussi contacter l'assistance.
               </div>
             )}
           </div>

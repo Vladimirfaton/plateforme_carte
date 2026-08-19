@@ -4,7 +4,7 @@ import { ArrowLeft, MapPin, Loader2 } from 'lucide-react';
 import { collegeAPI } from '../services/api';
 
 const emptyForm = {
-  nom: '', directeur_prenom: '', directeur_nom: '', directeur_contact: '', email: '', telephone: '',
+  nom: '', directeur_prenom: '', directeur_nom: '', directeur_sexe: '', directeur_contact: '', email: '', telephone: '',
 };
 
 export default function CollegeForm() {
@@ -34,6 +34,7 @@ export default function CollegeForm() {
           nom: c.nom || '',
           directeur_prenom: c.directeur_prenom || '',
           directeur_nom: c.directeur_nom || '',
+          directeur_sexe: c.directeur_sexe || '',          
           directeur_contact: c.directeur_contact || '',
           email: c.email || '',
           telephone: c.telephone || '',
@@ -169,6 +170,17 @@ export default function CollegeForm() {
                 required
               />
             </Field>
+          <Field label="Civilité du directeur / de la directrice">
+            <select
+              value={form.directeur_sexe}
+              onChange={e => setForm({ ...form, directeur_sexe: e.target.value })}
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="">Non renseigné</option>
+              <option value="M">Monsieur (Directeur)</option>
+              <option value="F">Madame (Directrice)</option>
+            </select>
+          </Field>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

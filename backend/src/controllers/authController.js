@@ -7,6 +7,8 @@ import { sendOtpEmail, sendLoginLinkEmail } from '../utils/email.js';
 import { College } from '../models/College.js';
 import { normalizeUsername } from '../utils/username.js';
 import { isValidPassword } from '../utils/validators.js';
+import { College } from '../models/College.js';
+import { verifyReactivationToken } from '../utils/reactivationToken.js';
 
 export const login = async (req, res) => {
   try {
@@ -347,5 +349,31 @@ export const checkUsernameAvailability = async (req, res) => {
   } catch (error) {
     logger.error(`Username check error: ${error.message}`);
     res.status(500).json({ error: 'Erreur lors de la vérification' });
+  }
+};
+// Page publique de réactivation : résout le token en nom de collège, sans login
+export const getReactivationInfo = async (req, res) => {
+  try {
+    const { token } = req.query;
+    if (!token) {
+      return res.status(400).json({ error: 'Token manquant' });
+    }
+
+    let collegeId;
+    try {
+      collegeId = verifyReactivationToken(token);
+    } catch {
+      return res.status(401).json({ error: 'Lien de renouvellement invalide ou expiré' });
+    }
+
+    const college = await College.findById(collegeId);
+    if (!college) {
+      return res.status(404).json({ error: 'Collège non trouvé' });
+    }
+
+    res.json({ collegeId: college.id, collegeName: college.nom });
+  } catch (error) {
+    logger.error(`getReactivationInfo error: ${error.message}`);
+    res.status(500).json({ error: 'Erreur lors de la vérification du lien' });
   }
 };

@@ -116,4 +116,14 @@ export class User {
     );
     return result.rows[0];
   }
+    // Réactive d'un coup directeur + secrétaire d'un collège (clé partagée = un seul paiement)
+  static async reactivateByCollege(collegeId) {
+    const result = await query(
+      `UPDATE users SET status = 'active', updated_at = CURRENT_TIMESTAMP
+       WHERE college_id = $1 AND role IN ('directeur', 'secretaire')
+       RETURNING id, email, role, college_id, username, nom, prenom, status`,
+      [collegeId]
+    );
+    return result.rows;
+  }
 }

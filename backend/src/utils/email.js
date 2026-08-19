@@ -249,7 +249,38 @@ export const sendCartesReadyEmail = async (email, { role, collegeName, classeCod
   `;
   return sendSimpleEmail(email, subject, htmlContent);
 };
+const directeurTitle = (sexe) => {
+  if (sexe === 'F') return 'Madame la Directrice';
+  if (sexe === 'M') return 'Monsieur le Directeur';
+  return 'Madame, Monsieur,'; // fallback neutre si sexe non renseigné (collèges déjà existants)
+};
 
+export const sendExpirationEmail = async (email, { collegeName, directeurSexe, reactivationUrl }) => {
+  const subject = `Accès expiré — ${collegeName}`;
+  const salutation = directeurTitle(directeurSexe);
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background-color: #f7faf8; padding: 24px; border-radius: 10px;">
+        <h2 style="color: #dc2626; margin-bottom: 16px;">Accès expiré</h2>
+        <p style="color: #333; font-size: 15px;">${salutation}</p>
+        <p style="color: #333; font-size: 15px;">
+          L'accès à l'espace de gestion du collège <strong>${collegeName}</strong> est arrivé à expiration.
+          Les comptes directeur et secrétaire sont désormais désactivés.
+        </p>
+        <p style="color: #333; font-size: 15px;">
+          Pour restaurer l'accès, merci de procéder au renouvellement via le lien ci-dessous :
+        </p>
+        <p style="text-align: center; margin: 24px 0;">
+          <a href="${reactivationUrl}" style="background-color: #059669; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">
+            Renouveler l'accès
+          </a>
+        </p>
+        <p style="color: #999; font-size: 12px; text-align: center;">FVS - Plateforme de gestion scolaire</p>
+      </div>
+    </div>
+  `;
+  return sendSimpleEmail(email, subject, htmlContent);
+};
 export default {
   sendOtpEmail,
   sendSimpleEmail,
@@ -258,4 +289,5 @@ export default {
   sendLoginLinkEmail,
   sendBrouillonReadyEmail,
   sendCartesReadyEmail,
+  sendExpirationEmail
 };

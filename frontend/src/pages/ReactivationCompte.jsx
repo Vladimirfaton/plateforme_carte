@@ -1,95 +1,96 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { IdCard, Loader2, CheckCircle2 } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { IdCard, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { authAPI, configAPI } from '../services/api';
 
-export default function ReactivationCompte({ onLoginSuccess }) {
+export default function ReactivationCompte() {
   const [searchParams] = useSearchParams();
-  const [username, setUsername] = useState(searchParams.get('username') || '');
-  const [password, setPassword] = useState('');
+  const token = searchParams.get('token') || '';
+
+  const [collegeId, setCollegeId] = useState(null);
+  const [collegeName, setCollegeName] = useState('');
+  const [payerRole, setPayerRole] = useState('directeur');
   const [pricing, setPricing] = useState(null);
+  const [scriptReady, setScriptReady] = useState(false);
+  const [invalidToken, setInvalidToken] = useState(false);
   const [error, setError] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [success, setSuccess] = useState(null); // { plainKey }
-  const containerRef = useRef(null);
-  const scriptLoaded = useRef(false);
-  const navigate = useNavigate();
+  const listenersAttached = useRef(false);
 
   useEffect(() => {
+    if (!token) {
+      setInvalidToken(true);
+      return;
+    }
+    authAPI.getReactivationInfo(token)
+      .then(res => {
+        setCollegeId(res.data.collegeId);
+        setCollegeName(res.data.collegeName);
+      })
+      .catch(() => setInvalidToken(true));
+
     configAPI.getPricing().then(res => setPricing(res.data)).catch(() => {});
 
-    if (!scriptLoaded.current && !document.querySelector('script[src="https://cdn.kkiapay.me/k.js"]')) {
+    if (document.querySelector('script[src="https://cdn.kkiapay.me/k.js"]')) {
+      setScriptReady(true);
+    } else {
       const script = document.createElement('script');
       script.src = 'https://cdn.kkiapay.me/k.js';
       script.async = true;
+      script.onload = () => setScriptReady(true);
       document.body.appendChild(script);
     }
-    scriptLoaded.current = true;
-  }, []);
+  }, [token]);
 
   useEffect(() => {
-    const handleSuccess = async (event) => {
-      const transactionId = event?.detail?.transactionId;
-      if (!transactionId) return;
+    if (!scriptReady || listenersAttached.current) return;
+    listenersAttached.current = true;
+
+    window.addSuccessListener(async ({ transactionId }) => {
       setConfirming(true);
       setError('');
       try {
-        const res = await authAPI.confirmReactivationPayment({ username, password, transactionId });
-        const { token, user, plainKey } = res.data;
-        sessionStorage.setItem('token', token);
-        sessionStorage.setItem('user', JSON.stringify(user));
-        setSuccess({ plainKey });
-        onLoginSuccess?.();
+        const res = await authAPI.confirmReactivationPayment({ token, transactionId });
+        setSuccess({ plainKey: res.data.plainKey });
       } catch (err) {
         setError(err.response?.data?.error || 'Erreur lors de la confirmation du paiement');
       } finally {
         setConfirming(false);
       }
-    };
-    const handleFailed = () => {
+    });
+
+    window.addFailedListener(() => {
       setError('Le paiement a échoué ou a été annulé.');
-    };
+    });
+  }, [scriptReady, token]);
 
-    window.addEventListener('success', handleSuccess);
-    window.addEventListener('failed', handleFailed);
-    return () => {
-      window.removeEventListener('success', handleSuccess);
-      window.removeEventListener('failed', handleFailed);
-    };
-  }, [username, password]);
-
-  // Construction DOM native de <kkiapay-widget> — évite le piège de la prop
-  // JSX "key" (réservée par React et jamais transmise au vrai DOM).
-  const startPayment = async (e) => {
-    e.preventDefault();
-    if (!username || !password) {
-      setError("Identifiant et mot de passe requis avant de payer");
-      return;
-    }
-    if (!pricing) return;
+  const startPayment = () => {
+    if (!pricing || !scriptReady || !collegeId) return;
     setError('');
-
-    if (customElements.get('kkiapay-widget')) {
-      openWidget();
-    } else {
-      await customElements.whenDefined('kkiapay-widget');
-      openWidget();
-    }
+    window.openKkiapayWidget({
+      amount: pricing.amount,
+      key: pricing.kkiapayPublicKey,
+      sandbox: pricing.sandbox,
+      position: 'center',
+      partnerId: collegeId, // relu côté backend (webhook) pour retrouver le collège
+      data: JSON.stringify({ payerRole }),
+    });
   };
 
-  const openWidget = () => {
-    if (!containerRef.current) return;
-    containerRef.current.innerHTML = '';
-
-    const widget = document.createElement('kkiapay-widget');
-    widget.setAttribute('amount', String(pricing.amount));
-    widget.setAttribute('key', pricing.kkiapayPublicKey);
-    widget.setAttribute('position', 'center');
-    widget.setAttribute('sandbox', pricing.sandbox ? 'true' : 'false');
-    widget.setAttribute('data', JSON.stringify({ username }));
-
-    containerRef.current.appendChild(widget);
-  };
+  if (invalidToken) {
+    return (
+      <div className="min-h-screen bg-[#f7faf8] flex items-center justify-center px-4">
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-8 w-full max-w-sm text-center">
+          <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto mb-4" />
+          <h1 className="text-base font-semibold text-slate-800 mb-2">Lien invalide</h1>
+          <p className="text-sm text-slate-500">
+            Ce lien de renouvellement est invalide ou a expiré. Contactez l'assistance FVS pour en obtenir un nouveau.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (success) {
     return (
@@ -97,7 +98,9 @@ export default function ReactivationCompte({ onLoginSuccess }) {
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-8 w-full max-w-sm text-center">
           <CheckCircle2 className="w-10 h-10 text-emerald-600 mx-auto mb-4" />
           <h1 className="text-base font-semibold text-slate-800 mb-2">Accès renouvelé</h1>
-          <p className="text-sm text-slate-500 mb-4">Un email de confirmation vous a été envoyé avec votre nouvelle clé d'accès.</p>
+          <p className="text-sm text-slate-500 mb-4">
+            Un email de confirmation a été envoyé au directeur et à la secrétaire avec la nouvelle clé d'accès.
+          </p>
           {success.plainKey && (
             <div className="mb-6">
               <label className="block text-xs font-medium text-slate-500 mb-1.5">Nouvelle clé d'accès (reçue par email)</label>
@@ -109,12 +112,12 @@ export default function ReactivationCompte({ onLoginSuccess }) {
               />
             </div>
           )}
-          <button
-            onClick={() => navigate('/gestion/dashboard')}
-            className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium cursor-pointer"
+          
+           <a href="/gestion/login"
+            className="block w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium"
           >
-            Accéder à mon espace
-          </button>
+            Aller à la page de connexion
+          </a>
         </div>
       </div>
     );
@@ -139,27 +142,22 @@ export default function ReactivationCompte({ onLoginSuccess }) {
           </div>
         )}
 
-        <form onSubmit={startPayment} className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1.5">Identifiant</label>
-            <input
-              type="text"
-              value={username}
-              onChange={e => setUsername(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              required
-            />
+        <div className="space-y-4">
+          <div className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg">
+            <p className="text-xs text-slate-500 mb-0.5">Collège</p>
+            <p className="text-sm font-medium text-slate-800">{collegeName || '...'}</p>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1.5">Mot de passe habituel</label>
-            <input
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
+            <label className="block text-xs font-medium text-slate-600 mb-1.5">Qui effectue le paiement ?</label>
+            <select
+              value={payerRole}
+              onChange={e => setPayerRole(e.target.value)}
               className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              required
-            />
+            >
+              <option value="directeur">Directeur / Directrice</option>
+              <option value="secretaire">Secrétaire</option>
+            </select>
           </div>
 
           {pricing && (
@@ -169,16 +167,15 @@ export default function ReactivationCompte({ onLoginSuccess }) {
           )}
 
           <button
-            type="submit"
-            disabled={confirming || !pricing}
+            type="button"
+            onClick={startPayment}
+            disabled={confirming || !pricing || !scriptReady || !collegeId}
             className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-lg text-sm font-medium cursor-pointer"
           >
             {confirming && <Loader2 className="w-4 h-4 animate-spin" />}
             {confirming ? 'Confirmation du paiement...' : 'Payer et renouveler'}
           </button>
-        </form>
-
-        <div ref={containerRef} />
+        </div>
       </div>
     </div>
   );

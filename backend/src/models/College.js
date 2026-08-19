@@ -5,7 +5,7 @@ export class College {
   static async create(data) {
     const {
       nom, commune, departement, directeur_nom,
-      directeur_prenom,
+      directeur_prenom, directeur_sexe,
       directeur_contact, email, telephone,
       secretaire_nom, secretaire_prenom, secretaire_telephone, secretaire_email,
     } = data;
@@ -16,12 +16,13 @@ export class College {
     const result = await query(
       `INSERT INTO colleges (
         id, nom, commune, departement, directeur_nom, directeur_contact,
-        directeur_prenom, email, telephone, secretaire_nom, secretaire_prenom, secretaire_telephone,
+        directeur_prenom, directeur_sexe, email, telephone, secretaire_nom, secretaire_prenom, secretaire_telephone,
         secretaire_email, created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
        RETURNING *`,
       [
-        id, nom, commune, departement, directeur_nom, directeur_contact, directeur_prenom || null, email, telephone,
+        id, nom, commune, departement, directeur_nom, directeur_contact, directeur_prenom || null,
+        directeur_sexe || null, email, telephone,
         secretaire_nom || null, secretaire_prenom || null, secretaire_telephone || null,
         secretaire_email || null, createdAt,
       ]
@@ -70,7 +71,7 @@ export class College {
   static async update(id, data) {
     const {
       nom, directeur_nom, directeur_contact, email, telephone,
-      directeur_prenom,
+      directeur_prenom, directeur_sexe,
       secretaire_nom, secretaire_prenom, secretaire_telephone, secretaire_email,
     } = data;
 
@@ -79,18 +80,19 @@ export class College {
        SET nom = COALESCE($1, nom),
            directeur_nom = COALESCE($2, directeur_nom),
            directeur_prenom = COALESCE($3, directeur_prenom),
-           directeur_contact = COALESCE($4, directeur_contact),
-           email = COALESCE($5, email),
-           telephone = COALESCE($6, telephone),
-           secretaire_nom = COALESCE($7, secretaire_nom),
-           secretaire_prenom = COALESCE($8, secretaire_prenom),
-           secretaire_telephone = COALESCE($9, secretaire_telephone),
-           secretaire_email = COALESCE($10, secretaire_email),
+           directeur_sexe = COALESCE($4, directeur_sexe),
+           directeur_contact = COALESCE($5, directeur_contact),
+           email = COALESCE($6, email),
+           telephone = COALESCE($7, telephone),
+           secretaire_nom = COALESCE($8, secretaire_nom),
+           secretaire_prenom = COALESCE($9, secretaire_prenom),
+           secretaire_telephone = COALESCE($10, secretaire_telephone),
+           secretaire_email = COALESCE($11, secretaire_email),
            updated_at = NOW()
-       WHERE id = $11
+       WHERE id = $12
        RETURNING *`,
       [
-        nom, directeur_nom, directeur_prenom, directeur_contact, email, telephone,
+        nom, directeur_nom, directeur_prenom, directeur_sexe, directeur_contact, email, telephone,
         secretaire_nom, secretaire_prenom, secretaire_telephone, secretaire_email, id,
       ]
     );

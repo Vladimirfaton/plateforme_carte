@@ -19,12 +19,26 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const code = error.response?.data?.code;
+    const status = error.response?.status;
+
+    // Expiration détectée sur n'importe quel appel (pas seulement 401) —
+    // déconnexion immédiate, où que l'utilisateur se trouve dans l'app.
+    if (code === 'ACCESS_EXPIRED') {
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('user');
+      if (!window.location.pathname.startsWith('/gestion/login')) {
+        window.location.href = '/gestion/login?expired=1';
+      }
+      return Promise.reject(error);
+    }
+
+    if (status === 401) {
       const isOnGestionPage = window.location.pathname.startsWith('/gestion') ||
         window.location.pathname === '/activation-compte' ||
         window.location.pathname === '/reactivation-compte';
       const isLoginAttempt = error.config?.url?.includes('/auth/login');
-      
+
       if (!isLoginAttempt) {
         sessionStorage.removeItem('token');
         sessionStorage.removeItem('user');
@@ -46,7 +60,9 @@ export const authAPI = {
   // Comptes de gestion (directeur/secrétaire)
   loginGestion: (username, password) => api.post('/auth/login-gestion', { username, password }),
   activateAccount: (data) => api.post('/auth/activation-compte', data),
-  confirmReactivationPayment: (data) => api.post('/auth/reactivation-paiement', data),
+  getReactivationInfo: (token) => api.get('/auth/reactivation-info', { params: { token } }),
+  confirmReactivationPayment: ({ token, transactionId }) =>
+    api.post('/auth/reactivation-paiement', { token, transactionId }),
   checkUsername: (username) => api.get('/auth/username-disponible', { params: { username } }),
 };
 
