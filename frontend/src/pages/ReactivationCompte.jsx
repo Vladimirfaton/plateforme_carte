@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { IdCard, Loader2, CheckCircle2 } from 'lucide-react';
+import { useKKiaPay } from 'kkiapay-react';
 import { authAPI, configAPI } from '../services/api';
 
 export default function ReactivationCompte({ onLoginSuccess }) {
@@ -9,30 +10,18 @@ export default function ReactivationCompte({ onLoginSuccess }) {
   const [password, setPassword] = useState('');
   const [pricing, setPricing] = useState(null);
   const [error, setError] = useState('');
-  const [paying, setPaying] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [success, setSuccess] = useState(null); // { plainKey }
-  const scriptLoaded = useRef(false);
-const widgetRef = useRef(null);
   const navigate = useNavigate();
+
+  const { openKkiapayWidget, addSuccessListener, addFailedListener } = useKKiaPay();
 
   useEffect(() => {
     configAPI.getPricing().then(res => setPricing(res.data)).catch(() => {});
-
-    if (!scriptLoaded.current) {
-      const script = document.createElement('script');
-      script.src = 'https://cdn.kkiapay.me/k.js';
-      script.async = true;
-      document.body.appendChild(script);
-      scriptLoaded.current = true;
-    }
   }, []);
 
   useEffect(() => {
-    const handleSuccess = async (event) => {
-      const transactionId = event?.detail?.transactionId;
-      if (!transactionId) return;
-      setPaying(false);
+    addSuccessListener(async ({ transactionId }) => {
       setConfirming(true);
       setError('');
       try {
@@ -47,19 +36,12 @@ const widgetRef = useRef(null);
       } finally {
         setConfirming(false);
       }
-    };
-    const handleFailed = () => {
-      setPaying(false);
-      setError('Le paiement a échoué ou a été annulé.');
-    };
+    });
 
-    window.addEventListener('success', handleSuccess);
-    window.addEventListener('failed', handleFailed);
-    return () => {
-      window.removeEventListener('success', handleSuccess);
-      window.removeEventListener('failed', handleFailed);
-    };
-  }, [username, password]);
+    addFailedListener(() => {
+      setError('Le paiement a échoué ou a été annulé.');
+    });
+  }, [username, password, addSuccessListener, addFailedListener]);
 
   const startPayment = (e) => {
     e.preventDefault();
@@ -67,14 +49,16 @@ const widgetRef = useRef(null);
       setError("Identifiant et mot de passe requis avant de payer");
       return;
     }
+    if (!pricing) return;
     setError('');
-    setPaying(true);
+    openKkiapayWidget({
+      amount: pricing.amount,
+      key: pricing.kkiapayPublicKey,
+      sandbox: pricing.sandbox,
+      data: JSON.stringify({ username }),
+    });
   };
-  useEffect(() => {
-  if (widgetRef.current && pricing?.kkiapayPublicKey) {
-    widgetRef.current.setAttribute('key', pricing.kkiapayPublicKey);
-  }
-}, [paying, pricing]);
+
   if (success) {
     return (
       <div className="min-h-screen bg-[#f7faf8] flex items-center justify-center px-4">
@@ -161,16 +145,6 @@ const widgetRef = useRef(null);
             {confirming ? 'Confirmation du paiement...' : 'Payer et renouveler'}
           </button>
         </form>
-
-        {paying && pricing && (
-  <kkiapay-widget
-    ref={widgetRef}
-    amount={pricing.amount}
-    data={JSON.stringify({ username })}
-    sandbox={pricing.sandbox ? 'true' : 'false'}
-    position="center"
-  />
-)}
       </div>
     </div>
   );
