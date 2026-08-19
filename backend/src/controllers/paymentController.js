@@ -6,8 +6,6 @@ import { College } from '../models/College.js';
 import { sendReactivationEmail } from '../utils/email.js';
 import { verifyReactivationToken } from '../utils/reactivationToken.js';
 import logger from '../config/logger.js';
-const tx = await k.verify(transactionId);
-logger.info(`[DEBUG kkiapay] réponse verify: ${JSON.stringify(tx)}`);
 const collegeId = tx.partnerId;
 const RENEWAL_PRICE_XOF = Number(process.env.RENEWAL_PRICE_XOF || 15000);
 
@@ -125,6 +123,7 @@ export const kkiapayWebhook = async (req, res) => {
 
     const k = getKkiapayClient();
     const tx = await k.verify(transactionId);
+    logger.info(`[DEBUG kkiapay] réponse verify: ${JSON.stringify(tx)}`);
     const collegeId = tx.partnerId;
 
     if (!collegeId) {
