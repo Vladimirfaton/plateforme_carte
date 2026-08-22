@@ -173,8 +173,8 @@ export const loginGestion = async (req, res) => {
       return res.status(400).json({ error: "Nom d'utilisateur et mot de passe requis" });
     }
 
-    const user = await User.findByUsername(normalizeUsername(username));
-    if (!user) {
+    const user = await User.findByUsername(username.trim());
+        if (!user) {
       return res.status(401).json({ error: 'Identifiants invalides' });
     }
 
