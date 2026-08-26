@@ -8,7 +8,7 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "setup-db": "node src/utils/setupDatabase.js",
-    "migrate": "node src/utils/migrate.js"
+    "migrate": "node-pg-migrate"
   },
   "keywords": [
     "fvs",
