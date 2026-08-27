@@ -546,6 +546,17 @@ export const generateSingleCardPDF = async (student, classInfo, collegeInfo, opt
 
 // ---- Impression directe (boite de dialogue systeme -> choix imprimante PVC)
 export const printFinalCards = async (students, classInfo, collegeInfo, options = {}) => {
+  const confirmed = window.confirm(
+    "⚠️ AVANT D'IMPRIMER — vérifiez le réglage d'échelle\n\n" +
+    "Dans la boîte de dialogue d'impression, sélectionnez :\n" +
+    "✓ \"Taille réelle\" ou \"100%\"\n" +
+    "✗ PAS \"Ajuster à la page\" ni \"Réduire pour ajuster\"\n\n" +
+    "Un mauvais réglage produira des cartes trop petites ou trop grandes " +
+    "pour le format PVC standard (85,6 × 53,98 mm).\n\n" +
+    "Continuer vers l'impression ?"
+  );
+  if (!confirmed) return;
+
   const bytes = await buildFinalCardsPdfBytes(students, classInfo, collegeInfo, options);
   const blob = new Blob([bytes], { type: 'application/pdf' });
   const url = URL.createObjectURL(blob);
@@ -572,7 +583,6 @@ export const printFinalCards = async (students, classInfo, collegeInfo, options 
 
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 };
-
 // ============================================================================
 // EXPORT PNG (une carte, 300 DPI)
 // ============================================================================
