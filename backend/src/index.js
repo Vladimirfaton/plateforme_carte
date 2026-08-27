@@ -14,8 +14,10 @@ import observationRoutes from './routes/observationRoutes.js';
 import cronRoutes from './routes/cronRoutes.js';
 import configRoutes from './routes/configRoutes.js';
 import webhookRoutes from './routes/webhookRoutes.js';
+import { validateEnv } from './config/validateEnv.js';
 
 dotenv.config();
+validateEnv();
 
 const app = express();
 const PORT = process.env.PORT || 3001;

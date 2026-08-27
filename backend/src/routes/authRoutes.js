@@ -12,8 +12,13 @@ import {
 } from '../controllers/authController.js';
 import { confirmReactivationPayment } from '../controllers/paymentController.js';
 import { authenticate, checkAccountActive } from '../middleware/auth.js';
+import { loginRateLimiter } from '../middleware/rateLimiter.js';
+
 
 const router = express.Router();
+
+router.post('/login', loginRateLimiter, login);
+router.post('/login-gestion', loginRateLimiter, loginGestion);
 
 router.post('/login', login);
 router.post('/verify-otp', verifyOtpCode);

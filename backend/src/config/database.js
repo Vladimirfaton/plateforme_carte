@@ -16,6 +16,9 @@ export const supabase = createClient(
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  max: 10,                      // nombre max de connexions simultanées dans le pool
+  idleTimeoutMillis: 30000,     // ferme une connexion inactive après 30s
+  connectionTimeoutMillis: 5000, // abandonne si aucune connexion dispo après 5s (évite un blocage silencieux)
 });
 
 pool.on('error', (err) => {
