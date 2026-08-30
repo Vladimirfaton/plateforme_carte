@@ -256,11 +256,12 @@ const drawRecto = (page, ox, oy, W, H, ctx) => {
   drawCentered(page, `Mle : ${student?.matricule || ''}`, bold, u(7), photoX, photoW, photoY - u(9));
 
   // ---- Colonne d'informations
+
   const infoX = photoX + photoW + u(9);
   const infoW = W - (infoX - ox) - P;
-  const labelSize = u(6.5);
-  const valueSize = u(6.5);
-  const lineH = u(8.5);
+  const labelSize = u(8);
+  const valueSize = u(8);
+  const lineH = u(10.8); // 8 × interligne 1.35
 
   const rows = [
     ['Nom :', student?.nom || ''],
@@ -701,8 +702,8 @@ const drawRectoCanvas = (ctx, { student, classInfo, collegeInfo, logoImg, photoI
   d.text(`Mle : ${student?.matricule || ''}`, photoX + photoW / 2, photoY - u(9), u(7), 'bold', '#000', 'center');
 
   const infoX = photoX + photoW + u(9);
-  const labelSize = u(6.5);
-  const lineH = u(8.5);
+  const labelSize = u(8);
+  const lineH = u(10.8);
   const rows = [
     ['Nom :', student?.nom || ''],
     ['Prénom(s) :', student?.prenom || ''],
