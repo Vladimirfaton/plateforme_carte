@@ -1,6 +1,5 @@
 import jwt from 'jsonwebtoken';
 import { User } from '../models/User.js';
-import { AccessKey } from '../models/AccessKey.js';
 import logger from '../config/logger.js';
 import { generateOTP, saveOTP, verifyOTP } from '../utils/otpUtils.js';
 import { sendOtpEmail, sendLoginLinkEmail } from '../utils/email.js';
