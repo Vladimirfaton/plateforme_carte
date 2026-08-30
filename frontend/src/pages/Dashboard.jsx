@@ -580,6 +580,7 @@ function CollegeGrid({ colleges, hasFilter, onOpen, onEdit }) {
 function CollegeFormPanel({ mode, initial, departement, commune, onClose, onSaved }) {
   const [form, setForm] = useState({
     nom: initial?.nom || '',
+    slogan: initial?.slogan || '',
     directeur_prenom: initial?.directeur_prenom || '',
     directeur_nom: initial?.directeur_nom || '',
     directeur_contact: initial?.directeur_contact || '',
@@ -665,6 +666,7 @@ function CollegeFormPanel({ mode, initial, departement, commune, onClose, onSave
       {error && <Notice>{error}</Notice>}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+// APRÈS
         <div className="sm:col-span-2">
           <label className="block text-xs font-medium text-slate-600 mb-1.5">Nom du collège</label>
           <input
@@ -674,6 +676,17 @@ function CollegeFormPanel({ mode, initial, departement, commune, onClose, onSave
             placeholder="Collège Catholique Ste Cécile"
             className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             required
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="block text-xs font-medium text-slate-600 mb-1.5">Slogan (optionnel)</label>
+          <input
+            type="text"
+            value={form.slogan}
+            onChange={e => setForm({ ...form, slogan: e.target.value })}
+            placeholder="Prière - Travail - Excellence"
+            maxLength={150}
+            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>
         <>
