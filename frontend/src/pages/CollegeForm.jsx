@@ -4,7 +4,7 @@ import { ArrowLeft, MapPin, Loader2 } from 'lucide-react';
 import { collegeAPI } from '../services/api';
 
 const emptyForm = {
-  nom: '', directeur_prenom: '', directeur_nom: '', directeur_sexe: '', directeur_contact: '', email: '', telephone: '',
+  nom: '', slogan: '', directeur_prenom: '', directeur_nom: '', directeur_sexe: '', directeur_contact: '', email: '', telephone: '',
 };
 
 export default function CollegeForm() {
@@ -32,6 +32,7 @@ export default function CollegeForm() {
         const c = res.data;
         setForm({
           nom: c.nom || '',
+          slogan: c.slogan || '',
           directeur_prenom: c.directeur_prenom || '',
           directeur_nom: c.directeur_nom || '',
           directeur_sexe: c.directeur_sexe || '',          
@@ -143,9 +144,20 @@ export default function CollegeForm() {
               type="text"
               value={form.nom}
               onChange={e => setForm({ ...form, nom: e.target.value })}
-              placeholder="Collège Catholique Ste Cécile"
+              placeholder="Collège Catholique Saint Joseph"
               className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
               required
+            />
+          </Field>
+
+          <Field label="Slogan (optionnel)">
+            <input
+              type="text"
+              value={form.slogan}
+              onChange={e => setForm({ ...form, slogan: e.target.value })}
+              placeholder="Prière - Travail - Excellence"
+              maxLength={150}
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </Field>
 

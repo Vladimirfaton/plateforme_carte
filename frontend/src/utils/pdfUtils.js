@@ -216,10 +216,14 @@ const drawRecto = (page, ox, oy, W, H, ctx) => {
   const cbW = W - (cbX - ox) - P;
   let cy = top - P - u(7);
 
-  wrapText(bold, (collegeInfo?.nom || '').toUpperCase(), u(7), cbW, 2).forEach((line) => {
-    drawCentered(page, line, bold, u(7), cbX, cbW, cy);
-    cy -= u(8);
+  wrapText(bold, (collegeInfo?.nom || '').toUpperCase(), u(10), cbW, 2).forEach((line) => {
+    drawCentered(page, line, bold, u(10), cbX, cbW, cy);
+    cy -= u(11);
   });
+  if (collegeInfo?.slogan) {
+    drawCentered(page, collegeInfo.slogan, italic, u(5.5), cbX, cbW, cy);
+    cy -= u(7);
+  }
   if (collegeInfo?.telephone) {
     drawCentered(page, `Tel : ${collegeInfo.telephone}`, font, u(5.5), cbX, cbW, cy);
     cy -= u(7);
@@ -669,8 +673,12 @@ const drawRectoCanvas = (ctx, { student, classInfo, collegeInfo, logoImg, photoI
   const cbX = P + logoW + u(4);
   const cbW = W - cbX - P;
   let cy = H - P - u(7);
-  d.text((collegeInfo?.nom || '').toUpperCase(), cbX + cbW / 2, cy, u(7), 'bold', '#000', 'center');
-  cy -= u(9);
+  d.text((collegeInfo?.nom || '').toUpperCase(), cbX + cbW / 2, cy, u(10), 'bold', '#000', 'center');
+  cy -= u(12);
+  if (collegeInfo?.slogan) {
+    d.text(collegeInfo.slogan, cbX + cbW / 2, cy, u(5.5), 'italic', '#000', 'center');
+    cy -= u(7);
+  }
   if (collegeInfo?.telephone) {
     d.text(`Tel : ${collegeInfo.telephone}`, cbX + cbW / 2, cy, u(5.5), 'normal', '#000', 'center');
     cy -= u(7);
