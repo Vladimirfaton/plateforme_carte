@@ -226,9 +226,9 @@ const drawRecto = (page, ox, oy, W, H, ctx) => {
   });
   if (collegeInfo?.slogan) {
     drawCentered(page, collegeInfo.slogan, italic, u(5.5), cbX, cbW, cy);
-    cy -= u(8);
+    cy -= u(7);
   }
-  if (collegeInfo?.email || collegeInfo?.departement) {
+    if (collegeInfo?.email) {
     const iconSize = u(5);
     const gap = u(2);
     const contactText = [collegeInfo?.email, collegeInfo?.departement].filter(Boolean).join('   ');
@@ -243,32 +243,17 @@ const drawRecto = (page, ox, oy, W, H, ctx) => {
     drawCentered(page, `Tel : ${collegeInfo.telephone}`, font, u(5.5), cbX, cbW, cy);
     cy -= u(7);
   }
-  if (collegeInfo?.commune) {
-    drawCentered(page, collegeInfo.commune, font, u(5.5), cbX, cbW, cy);
-  }
+  const loc = [collegeInfo?.commune, collegeInfo?.departement].filter(Boolean).join(' - ');
+  if (loc) drawCentered(page, loc, font, u(5.5), cbX, cbW, cy);
 
   // ---- Titre
   const titleY = top - P - logoH - u(11);
-  drawCentered(page, `CARTE D'IDENTITE SCOLAIRE   ${year}`, bold, u(10), ox, W, titleY);
+  drawCentered(page, `CARTE D'IDENTITE SCOLAIRE   ${year}`, bold, u(9), ox, W, titleY);
 
-  // ---- Lignes d'information (calculees avant la photo pour la dimensionner)
-  const labelSize = u(8);
-  const valueSize = u(8);
-  const lineH = u(10.8); // taille 8 x interligne 1.35
-  const rows = [
-    ['Nom :', student?.nom || ''],
-    ['Prénom(s) :', student?.prenom || ''],
-    ['Né(e) le :', `${formatDateFr(student?.date_naissance)}${student?.lieu_naissance ? `   à   ${student.lieu_naissance}` : ''}`],
-    ['Sexe :', formatSexe(student?.sexe)],
-    ['Nationalité :', student?.nationalite || ''],
-    ['Adresse :', student?.adresse || ''],
-    ['Classe :', classInfo?.code || ''],
-  ];
-
-  // ---- Photo + matricule (hauteur alignee sur le bloc d'informations)
+  // ---- Photo + matricule
   const photoX = ox + u(8);
-  const photoH = rows.length * lineH;
-  const photoW = photoH * (35 / 45); // conserve le ratio portrait d'origine
+  const photoW = u(35);
+  const photoH = u(45);
   const photoY = titleY - u(8) - photoH;
 
   page.drawRectangle({
@@ -286,8 +271,22 @@ const drawRecto = (page, ox, oy, W, H, ctx) => {
   drawCentered(page, `Mle : ${student?.matricule || ''}`, bold, u(7), photoX, photoW, photoY - u(9));
 
   // ---- Colonne d'informations
+
   const infoX = photoX + photoW + u(9);
   const infoW = W - (infoX - ox) - P;
+  const labelSize = u(8);
+  const valueSize = u(8);
+  const lineH = u(10.8); // 8 × interligne 1.35
+
+  const rows = [
+    ['Nom :', student?.nom || ''],
+    ['Prénom(s) :', student?.prenom || ''],
+    ['Né(e) le :', `${formatDateFr(student?.date_naissance)}${student?.lieu_naissance ? `   à   ${student.lieu_naissance}` : ''}`],
+    ['Sexe :', formatSexe(student?.sexe)],
+    ['Nationalité :', student?.nationalite || ''],
+    ['Adresse :', student?.adresse || ''],
+    ['Classe :', classInfo?.code || ''],
+  ];
 
   let ry = titleY - u(10);
   rows.forEach(([label, value]) => {
@@ -319,6 +318,7 @@ const drawRecto = (page, ox, oy, W, H, ctx) => {
   });
   drawCentered(page, "Signature de l'apprenant", italic, u(4.2), sigX, sigW, oy + u(9), GREY);
 };
+
 // ============================================================================
 // VERSO (identique pour toutes les cartes d'un etablissement)
 // ============================================================================
@@ -686,56 +686,32 @@ const drawRectoCanvas = (ctx, { student, classInfo, collegeInfo, logoImg, photoI
 
   d.rect(0, 0, W, H, '#FFFFFF');
 
-  const logoW = u(115);
-  const logoH = logoImg ? logoW * (logoImg.height / logoImg.width) : u(24);
+  const logoW = u(104);
+  const logoH = logoImg ? logoW * (logoImg.height / logoImg.width) : u(22);
   if (logoImg) d.image(logoImg, P, H - P - logoH, logoW, logoH);
 
   const cbX = P + logoW + u(4);
   const cbW = W - cbX - P;
-  let cy = H - P - u(9);
+  let cy = H - P - u(7);
   d.text((collegeInfo?.nom || '').toUpperCase(), cbX + cbW / 2, cy, u(10), 'bold', '#000', 'center');
-  cy -= u(11);
+  cy -= u(12);
   if (collegeInfo?.slogan) {
     d.text(collegeInfo.slogan, cbX + cbW / 2, cy, u(5.5), 'italic', '#000', 'center');
-    cy -= u(8);
-  }
-  if (collegeInfo?.email || collegeInfo?.departement) {
-    const iconSize = u(5);
-    const gap = u(2);
-    const contactText = [collegeInfo?.email, collegeInfo?.departement].filter(Boolean).join('   ');
-    const textW = d.measure(contactText, u(5.5), 'normal');
-    const blockW = iconSize + gap + textW;
-    const blockX = cbX + (cbW - blockW) / 2;
-    drawEnvelopeCv(d, blockX, cy - iconSize * 0.65, iconSize, iconSize * 0.72, '#000');
-    d.text(contactText, blockX + iconSize + gap, cy, u(5.5), 'normal', '#000', 'left');
     cy -= u(7);
   }
   if (collegeInfo?.telephone) {
     d.text(`Tel : ${collegeInfo.telephone}`, cbX + cbW / 2, cy, u(5.5), 'normal', '#000', 'center');
     cy -= u(7);
   }
-  if (collegeInfo?.commune) {
-    d.text(collegeInfo.commune, cbX + cbW / 2, cy, u(5.5), 'normal', '#000', 'center');
-  }
+  const loc = [collegeInfo?.commune, collegeInfo?.departement].filter(Boolean).join(' - ');
+  if (loc) d.text(loc, cbX + cbW / 2, cy, u(5.5), 'normal', '#000', 'center');
 
   const titleY = H - P - logoH - u(11);
-  d.text(`CARTE D'IDENTITE SCOLAIRE   ${year}`, W / 2, titleY, u(10), 'bold', '#000', 'center');
-
-  const labelSize = u(8);
-  const lineH = u(10.8);
-  const rows = [
-    ['Nom :', student?.nom || ''],
-    ['Prénom(s) :', student?.prenom || ''],
-    ['Né(e) le :', `${formatDateFr(student?.date_naissance)}${student?.lieu_naissance ? `   à   ${student.lieu_naissance}` : ''}`],
-    ['Sexe :', formatSexe(student?.sexe)],
-    ['Nationalité :', student?.nationalite || ''],
-    ['Adresse :', student?.adresse || ''],
-    ['Classe :', classInfo?.code || ''],
-  ];
+  d.text(`CARTE D'IDENTITE SCOLAIRE   ${year}`, W / 2, titleY, u(9), 'bold', '#000', 'center');
 
   const photoX = u(8);
-  const photoH = rows.length * lineH;
-  const photoW = photoH * (35 / 45);
+  const photoW = u(35);
+  const photoH = u(45);
   const photoY = titleY - u(8) - photoH;
   d.rect(photoX, photoY, photoW, photoH, '#141414');
   if (photoImg) {
@@ -745,6 +721,17 @@ const drawRectoCanvas = (ctx, { student, classInfo, collegeInfo, logoImg, photoI
   d.text(`Mle : ${student?.matricule || ''}`, photoX + photoW / 2, photoY - u(9), u(7), 'bold', '#000', 'center');
 
   const infoX = photoX + photoW + u(9);
+  const labelSize = u(8);
+  const lineH = u(10,8);
+  const rows = [
+    ['Nom :', student?.nom || ''],
+    ['Prénom(s) :', student?.prenom || ''],
+    ['Né(e) le :', `${formatDateFr(student?.date_naissance)}${student?.lieu_naissance ? `   à   ${student.lieu_naissance}` : ''}`],
+    ['Sexe :', formatSexe(student?.sexe)],
+    ['Nationalité :', student?.nationalite || ''],
+    ['Adresse :', student?.adresse || ''],
+    ['Classe :', classInfo?.code || ''],
+  ];
   let ry = titleY - u(10);
   rows.forEach(([label, value]) => {
     const lw = d.measure(label, labelSize, 'normal');
@@ -770,6 +757,85 @@ const drawRectoCanvas = (ctx, { student, classInfo, collegeInfo, logoImg, photoI
   ctx.textAlign = 'center';
   ctx.fillText("Signature de l'apprenant", sigX + sigW / 2, H - u(9));
 };
+
+const drawVersoCanvas = (ctx, { collegeInfo, qrImg, signImg, year }) => {
+  const W = ctx.canvas.width;
+  const H = ctx.canvas.height;
+  const s = W / BASE_W;
+  const u = (n) => n * s;
+  const d = cvHelpers(ctx);
+  const P = u(6);
+
+  d.rect(0, 0, W, H, '#FFFFFF');
+
+  // ---- Bloc central : nom de l'etablissement en tres grande police (~70% de la largeur)
+  const collegeName = sanitize((collegeInfo?.nom || '').toUpperCase());
+  const NAME_MIN = u(8);
+  const NAME_MAX = u(15);
+  const nameMaxWidth = W - P * 2;
+  const fit = fitTitleSize(
+    (t, sz) => d.measure(t, sz, 'bold'),
+    collegeName, W * 0.7, nameMaxWidth, NAME_MIN, NAME_MAX
+  );
+
+  const TOP_MARGIN = u(9);
+  const ASCENT = 0.74;
+  let cy = H - TOP_MARGIN - fit.size * ASCENT;
+  const nameLines = fit.fits ? [collegeName] : wrapCanvasText(d, collegeName, fit.size, 'bold', nameMaxWidth, 2);
+  nameLines.forEach((line) => {
+    d.text(line, W / 2, cy, fit.size, 'bold', '#000', 'center');
+    cy -= fit.size * 1.25;
+  });
+  cy -= u(3);
+
+  if (collegeInfo?.telephone) {
+    d.text(`TEL : ${collegeInfo.telephone}`, W / 2, cy, u(6.5), 'normal', '#000', 'center');
+    cy -= u(11);
+  }
+  d.text(`CARTE D'IDENTITE SCOLAIRE : ${year}`, W / 2, cy, u(6.5), 'bold', '#000', 'center');
+  cy -= u(16);
+
+  const rightX = W * 0.42;
+  const rightW = W * 0.58 - P;
+  d.text('LE DIRECTEUR', rightX + rightW / 2, cy, u(6), 'bold', '#000', 'center');
+
+  const sigBoxW = u(72);
+  const sigBoxH = u(24);
+  const sigX = rightX + (rightW - sigBoxW) / 2;
+  const sigAreaTop = cy - u(9);
+  const sigY = sigAreaTop - sigBoxH;
+
+  if (signImg) {
+    const { w, h } = fitContain(signImg.width, signImg.height, sigBoxW, sigBoxH);
+    d.image(signImg, sigX + (sigBoxW - w) / 2, sigY + (sigBoxH - h) / 2, w, h);
+  }
+  // sinon : zone laissee vierge pour une signature manuscrite
+
+  const nameY = sigY - u(8);
+  const directorName = sanitize(collegeInfo?.directeur_nom || '');
+  if (directorName) {
+    const dirSize = u(6.5);
+    const dirW = d.measure(directorName, dirSize, 'bold');
+    const nameCenterX = sigX + sigBoxW / 2;
+    d.text(directorName, nameCenterX, nameY, dirSize, 'bold', '#000', 'center');
+    d.line(nameCenterX - dirW / 2, nameY - u(2), nameCenterX + dirW / 2, nameY - u(2), '#000', Math.max(1, u(0.5)));
+  }
+
+  // ---- Bande tricolore centree sur toute la largeur de la carte
+  const bandW = u(85);
+  const bandX = (W - bandW) / 2;
+  const seg = bandW / 3;
+  d.rect(bandX, u(8), seg, u(4.5), '#00873E');
+  d.rect(bandX + seg, u(8), seg, u(4.5), '#FCD900');
+  d.rect(bandX + seg * 2, u(8), seg, u(4.5), '#E31C24');
+
+  const qrSize = u(28);
+  const qrX = u(14);
+  const qrY = (H - qrSize) / 2 - u(6);
+  if (qrImg) d.image(qrImg, qrX, qrY, qrSize, qrSize);
+  else d.strokeRect(qrX, qrY, qrSize, qrSize, '#000', 1);
+};
+
 export const generateCardImages = async (students, classInfo, collegeInfo, options = {}) => {
   const {
     cardWidthMm = DEFAULT_CARD_MM.width,
