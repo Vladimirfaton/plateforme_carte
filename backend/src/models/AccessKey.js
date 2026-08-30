@@ -3,10 +3,9 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 
-// Alphabet sans caractères ambigus (pas de 0/O, 1/I/L)
 const CHARSET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const FREE_DURATION_DAYS = 155;
-const PAID_DURATION_DAYS = 365;
+const TRIAL_DURATION_DAYS = 330;
+const RENEWAL_UNIT_YEARS = Number(process.env.ACCESS_KEY_UNIT_YEARS || 3);
 
 function generatePlainKey(length = 12) {
   const bytes = crypto.randomBytes(length);
@@ -16,9 +15,9 @@ function generatePlainKey(length = 12) {
 }
 
 export class AccessKey {
-  // Crée une clé en attente (envoyée par mail) pour un collège.
-  // type = 'free' (155j, première activation) ou 'paid' (365j, renouvellement)
-  static async createPending(collegeId, type = 'free') {
+  // `type` = 'essai' | 'renouvellement' — purement informatif/historique,
+  // ne conditionne plus aucune fonctionnalité ni durée.
+  static async createPending(collegeId, type = 'essai') {
     const plainKey = generatePlainKey();
     const keyHash = await bcrypt.hash(plainKey, 10);
     const id = uuidv4();
@@ -52,7 +51,6 @@ export class AccessKey {
     return result.rows[0];
   }
 
-  // Vérifie la clé saisie par l'utilisateur contre la clé pending du collège
   static async verifyPendingKey(collegeId, plainKey) {
     const pending = await this.findPendingByCollege(collegeId);
     if (!pending) return null;
@@ -60,22 +58,31 @@ export class AccessKey {
     return match ? pending : null;
   }
 
-  // Active la clé (première activation ou renouvellement) et fixe l'expiration
-  static async activate(keyId, type) {
-    const days = type === 'paid' ? PAID_DURATION_DAYS : FREE_DURATION_DAYS;
+  // Active la clé avec une durée explicite en jours.
+  static async activate(keyId, durationDays) {
     const result = await query(
       `UPDATE access_keys
        SET status = 'active', activated_at = CURRENT_TIMESTAMP,
            expires_at = CURRENT_TIMESTAMP + ($2 || ' days')::INTERVAL
        WHERE id = $1
        RETURNING *`,
-      [keyId, days]
+      [keyId, durationDays]
     );
     return result.rows[0];
   }
 
-    // ⚠️ Changement de contrat : retourne désormais un tableau de college_id
-  // (au lieu d'un nombre) pour permettre l'envoi ciblé des emails d'expiration.
+  // ==========================================================================
+  // FONCTION UNIFIÉE — point d'entrée UNIQUE pour créer + activer une clé.
+  // Utilisée par : activation initiale, paiement KKiaPay confirmé, et
+  // renouvellement manuel admin (cash). Garantit que les 3 chemins produisent
+  // exactement la même chose, sans duplication de logique.
+  // ==========================================================================
+  static async createAndActivate(collegeId, { type, durationDays }) {
+    const { id, plainKey } = await this.createPending(collegeId, type);
+    const activated = await this.activate(id, durationDays);
+    return { ...activated, plainKey };
+  }
+
   static async expireOutdatedKeys() {
     const expired = await query(
       `UPDATE access_keys SET status = 'expired'
@@ -95,6 +102,11 @@ export class AccessKey {
 
     return collegeIds;
   }
+
+  // Calcule le nombre de jours pour un renouvellement de `multiplier` unités.
+  static renewalDurationDays(multiplier = 1) {
+    return RENEWAL_UNIT_YEARS * multiplier * 365;
+  }
 }
 
-export { FREE_DURATION_DAYS, PAID_DURATION_DAYS };
+export { TRIAL_DURATION_DAYS, RENEWAL_UNIT_YEARS };

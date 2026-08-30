@@ -8,6 +8,7 @@ import { College } from '../models/College.js';
 import { normalizeUsername } from '../utils/username.js';
 import { isValidPassword } from '../utils/validators.js';
 import { verifyReactivationToken } from '../utils/reactivationToken.js';
+import { AccessKey, TRIAL_DURATION_DAYS } from '../models/AccessKey.js';
 
 export const login = async (req, res) => {
   try {
@@ -266,7 +267,7 @@ export const activateAccount = async (req, res) => {
       return res.status(401).json({ error: "Clé d'accès invalide" });
     }
 const activatedUser = await User.activateAccount(user.id, usernameNormalized, password);
-    await AccessKey.activate(pendingKey.id, 'free');
+    await AccessKey.activate(pendingKey.id, TRIAL_DURATION_DAYS);
 
     const loginUrl = `${(process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/+$/, '')}/gestion/login`;
     try {

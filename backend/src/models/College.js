@@ -2,11 +2,12 @@ import { query } from '../config/database.js';
 import { v4 as uuidv4 } from 'uuid';
 
 export class College {
+// APRÈS
   static async create(data) {
     const {
       nom, commune, departement, directeur_nom,
       directeur_prenom, directeur_sexe,
-      directeur_contact, email, telephone,
+      directeur_contact, email, telephone, slogan,
       secretaire_nom, secretaire_prenom, secretaire_telephone, secretaire_email,
     } = data;
 
@@ -16,13 +17,13 @@ export class College {
     const result = await query(
       `INSERT INTO colleges (
         id, nom, commune, departement, directeur_nom, directeur_contact,
-        directeur_prenom, directeur_sexe, email, telephone, secretaire_nom, secretaire_prenom, secretaire_telephone,
+        directeur_prenom, directeur_sexe, email, telephone, slogan, secretaire_nom, secretaire_prenom, secretaire_telephone,
         secretaire_email, created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
        RETURNING *`,
       [
         id, nom, commune, departement, directeur_nom, directeur_contact, directeur_prenom || null,
-        directeur_sexe || null, email, telephone,
+        directeur_sexe || null, email, telephone, slogan || null,
         secretaire_nom || null, secretaire_prenom || null, secretaire_telephone || null,
         secretaire_email || null, createdAt,
       ]
@@ -68,10 +69,11 @@ export class College {
 
   // COALESCE : permet des mises à jour partielles (ex: uniquement les champs
   // secrétaire depuis createManagementAccounts) sans écraser le reste.
+// APRÈS
   static async update(id, data) {
     const {
       nom, directeur_nom, directeur_contact, email, telephone,
-      directeur_prenom, directeur_sexe,
+      directeur_prenom, directeur_sexe, slogan,
       secretaire_nom, secretaire_prenom, secretaire_telephone, secretaire_email,
     } = data;
 
@@ -84,22 +86,22 @@ export class College {
            directeur_contact = COALESCE($5, directeur_contact),
            email = COALESCE($6, email),
            telephone = COALESCE($7, telephone),
-           secretaire_nom = COALESCE($8, secretaire_nom),
-           secretaire_prenom = COALESCE($9, secretaire_prenom),
-           secretaire_telephone = COALESCE($10, secretaire_telephone),
-           secretaire_email = COALESCE($11, secretaire_email),
+           slogan = COALESCE($8, slogan),
+           secretaire_nom = COALESCE($9, secretaire_nom),
+           secretaire_prenom = COALESCE($10, secretaire_prenom),
+           secretaire_telephone = COALESCE($11, secretaire_telephone),
+           secretaire_email = COALESCE($12, secretaire_email),
            updated_at = NOW()
-       WHERE id = $12
+       WHERE id = $13
        RETURNING *`,
       [
-        nom, directeur_nom, directeur_prenom, directeur_sexe, directeur_contact, email, telephone,
+        nom, directeur_nom, directeur_prenom, directeur_sexe, directeur_contact, email, telephone, slogan,
         secretaire_nom, secretaire_prenom, secretaire_telephone, secretaire_email, id,
       ]
     );
 
     return result.rows[0];
   }
-
   static async delete(id) {
     await query('DELETE FROM colleges WHERE id = $1', [id]);
   }

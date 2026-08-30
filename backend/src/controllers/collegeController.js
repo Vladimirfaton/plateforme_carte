@@ -39,6 +39,7 @@ export const createCollege = async (req, res) => {
       directeur_contact,
       email,
       telephone,
+      slogan,
       secretaire_nom,
       secretaire_prenom,
       secretaire_telephone,
@@ -58,12 +59,12 @@ export const createCollege = async (req, res) => {
       directeur_contact,
       email,
       telephone,
+      slogan,
       secretaire_nom,
       secretaire_prenom,
       secretaire_telephone,
       secretaire_email,
     });
-
     logger.info(`College created: ${college.id} - ${nom}`);
     res.status(201).json(college);
   } catch (error) {
