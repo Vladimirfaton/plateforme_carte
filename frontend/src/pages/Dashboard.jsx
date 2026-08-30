@@ -666,7 +666,6 @@ function CollegeFormPanel({ mode, initial, departement, commune, onClose, onSave
       {error && <Notice>{error}</Notice>}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-// APRÈS
         <div className="sm:col-span-2">
           <label className="block text-xs font-medium text-slate-600 mb-1.5">Nom du collège</label>
           <input

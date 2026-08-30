@@ -2,7 +2,6 @@ import { query } from '../config/database.js';
 import { v4 as uuidv4 } from 'uuid';
 
 export class College {
-// APRÈS
   static async create(data) {
     const {
       nom, commune, departement, directeur_nom,
@@ -69,7 +68,6 @@ export class College {
 
   // COALESCE : permet des mises à jour partielles (ex: uniquement les champs
   // secrétaire depuis createManagementAccounts) sans écraser le reste.
-// APRÈS
   static async update(id, data) {
     const {
       nom, directeur_nom, directeur_contact, email, telephone,
