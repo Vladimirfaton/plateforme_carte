@@ -2015,7 +2015,6 @@ function Tricolor({ left, top, width, height }) {
 function RectoPreview({ student, cls, college, year }) {
   const logoW = u(130);
   const logoH = logoW * 0.214;
-  const titleTop = u(5) + logoH + u(11);
   const labelSize = u(8);
   const lineH = u(12); // taille 8 x interligne 1.5
 
@@ -2029,9 +2028,20 @@ function RectoPreview({ student, cls, college, year }) {
     ['Classe :', cls?.code || ''],
   ];
 
-  // Espace reserve au titre (police 10, line-height ~1.05) avant photo/infos
-  const titleBlockH = u(10) * 1.05;
-  const rowsTop = titleTop + titleBlockH + u(1);
+  // ---- Bloc etablissement (nom 1-2 lignes + slogan + adresse), mesure comme le PDF
+  const headerBoxW = PREVIEW_W - (u(5) + logoW + u(4)) - u(5);
+  const nameText = (college?.nom || '').toUpperCase();
+  const nameLines = wrapText(previewMeasurer, nameText, u(10), headerBoxW, 2);
+  let headerBottom = u(9);
+  headerBottom += nameLines.length * u(11);
+  if (college?.slogan) headerBottom += u(8);
+  const adresseLigne = [college?.adresse_postale, college?.commune].filter(Boolean).join('   ');
+  if (college?.adresse_postale || college?.commune) headerBottom += u(6);
+
+  // ---- Titre : descend si le bloc etablissement depasse la hauteur du logo
+  const titleTop = Math.max(u(5) + logoH + u(11), headerBottom);
+
+  const rowsTop = titleTop + u(10) * 1.05 + u(1);
   const photoTop = rowsTop;
   const photoH = rows.length * lineH;
   const photoW = photoH * (35 / 45);
@@ -2039,8 +2049,6 @@ function RectoPreview({ student, cls, college, year }) {
 
   const sigW = u(54);
   const sigH = u(19);
-
-  const adresseLigne = [college?.adresse_postale, college?.commune].filter(Boolean).join('   ');
 
   return (
     <div
@@ -2054,10 +2062,11 @@ function RectoPreview({ student, cls, college, year }) {
 
       <div style={{
         position: 'absolute', left: u(5) + logoW + u(4), top: u(4),
-        width: PREVIEW_W - (u(5) + logoW + u(4)) - u(5),
-        textAlign: 'center', lineHeight: 1.15,
+        width: headerBoxW, textAlign: 'center', lineHeight: 1.15,
       }}>
-        <div style={{ fontSize: u(10), fontWeight: 700 }}>{(college?.nom || '').toUpperCase()}</div>
+        {nameLines.map((line, i) => (
+          <div key={i} style={{ fontSize: u(10), fontWeight: 700 }}>{line}</div>
+        ))}
         {college?.slogan && (
           <div style={{ fontSize: u(5.5), fontStyle: 'italic', marginTop: u(3) }}>{college.slogan}</div>
         )}

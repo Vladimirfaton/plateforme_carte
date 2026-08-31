@@ -39,7 +39,7 @@ export const up = (pgm) => {
     secretaire_telephone: { type: 'varchar(30)' },
     secretaire_email: { type: 'varchar(255)' },
     directeur_prenom: { type: 'varchar(255)' },
-    directeur_sexe: { type: 'varchar(255)' }, // écart détecté vs setupDatabase.js
+    directeur_sexe: { type: 'varchar(255)' },
   });
 
   pgm.addConstraint('users', 'users_college_id_fkey', {
@@ -207,7 +207,6 @@ export const up = (pgm) => {
   });
 
   // Table créée manuellement en Phase 5, absente de l'ancien setupDatabase.js.
-  // ON DELETE SET NULL supposé par cohérence (colonnes nullable) — à confirmer.
   pgm.createTable('payments_kkiapay', {
     id: { type: 'uuid', primaryKey: true },
     college_id: {

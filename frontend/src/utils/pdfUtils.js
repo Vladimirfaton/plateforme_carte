@@ -228,7 +228,7 @@ const drawRecto = (page, ox, oy, W, H, ctx) => {
     drawCentered(page, collegeInfo.slogan, italic, u(5.5), cbX, cbW, cy);
     cy -= u(8);
   }
-const adresseLigne = [collegeInfo?.adresse_postale, collegeInfo?.commune].filter(Boolean).join('   ');
+  const adresseLigne = [collegeInfo?.adresse_postale, collegeInfo?.commune].filter(Boolean).join('   ');
   if (collegeInfo?.adresse_postale) {
     const iconW = u(6);
     const iconH = u(4.3);
@@ -241,9 +241,11 @@ const adresseLigne = [collegeInfo?.adresse_postale, collegeInfo?.commune].filter
   } else if (collegeInfo?.commune) {
     drawCentered(page, collegeInfo.commune, font, u(5.5), cbX, cbW, cy);
   }
+  const headerBottom = cy - u(6);
 
-  // ---- Titre
-  const titleY = top - P - logoH - u(11);
+  // ---- Titre (descend automatiquement si le bloc etablissement depasse
+  // la hauteur du logo, ex: nom de college long sur 2 lignes + slogan + adresse)
+  const titleY = Math.min(top - P - logoH - u(11), headerBottom);
   drawCentered(page, `CARTE D'IDENTITE SCOLAIRE   ${year}`, bold, u(10), ox, W, titleY);
 
   // ---- Lignes d'information (calculees avant la photo pour la dimensionner dessus)
@@ -393,7 +395,7 @@ const drawVerso = (page, ox, oy, W, H, ctx) => {
   // sinon : zone laissee vierge pour une signature manuscrite
 
   const nameY = sigY - u(8);
-  const directorName = sanitize(collegeInfo?.directeur_nom || '');
+  const directorName = sanitize(collegeInfo?.directeur_nom || '', collegeInfo?.directeur_prenom || '');
   if (directorName) {
     const dirSize = u(6.5);
     const dirW = bold.widthOfTextAtSize(directorName, dirSize);
@@ -717,8 +719,9 @@ const adresseLigne = [collegeInfo?.adresse_postale, collegeInfo?.commune].filter
   } else if (collegeInfo?.commune) {
     d.text(collegeInfo.commune, cbX + cbW / 2, cy, u(5.5), 'normal', '#000', 'center');
   }
+  const headerBottom = cy - u(6);
 
-  const titleY = H - P - logoH - u(11);
+  const titleY = Math.min(H - P - logoH - u(11), headerBottom);
   d.text(`CARTE D'IDENTITE SCOLAIRE   ${year}`, W / 2, titleY, u(10), 'bold', '#000', 'center');
 
   const labelSize = u(8);
