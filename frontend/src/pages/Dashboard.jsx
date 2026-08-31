@@ -2031,9 +2031,12 @@ function RectoPreview({ student, cls, college, year }) {
   // ---- Bloc etablissement (nom 1-2 lignes + slogan + adresse), mesure comme le PDF
   const headerBoxW = PREVIEW_W - (u(5) + logoW + u(4)) - u(5);
   const nameText = (college?.nom || '').toUpperCase();
-  const nameLines = wrapText(previewMeasurer, nameText, u(10), headerBoxW, 2);
+  const { lines: nameLines, size: nameSize } = fitWrappedText(
+    previewMeasurer, nameText, headerBoxW, 2, u(10), u(6)
+  );
+  const nameLineH = nameSize * 1.15;
   let headerBottom = u(9);
-  headerBottom += nameLines.length * u(11);
+  headerBottom += nameLines.length * nameLineH;
   if (college?.slogan) headerBottom += u(8);
   const adresseLigne = [college?.adresse_postale, college?.commune].filter(Boolean).join('   ');
   if (college?.adresse_postale || college?.commune) headerBottom += u(6);
@@ -2065,7 +2068,7 @@ function RectoPreview({ student, cls, college, year }) {
         width: headerBoxW, textAlign: 'center', lineHeight: 1.15,
       }}>
         {nameLines.map((line, i) => (
-          <div key={i} style={{ fontSize: u(10), fontWeight: 700 }}>{line}</div>
+          <div key={i} style={{ fontSize: nameSize, fontWeight: 700 }}>{line}</div>
         ))}
         {college?.slogan && (
           <div style={{ fontSize: u(5.5), fontStyle: 'italic', marginTop: u(3) }}>{college.slogan}</div>
@@ -2137,7 +2140,15 @@ const measureTextPx = (text, sizePx, weight = 'bold') => {
   return c.measureText(text || '').width;
 };
 const previewMeasurer = { widthOfTextAtSize: (t, sz) => measureTextPx(t, sz, 'bold') };
-
+const fitWrappedText = (measurer, text, maxWidth, maxLines, maxSize, minSize) => {
+  let size = maxSize;
+  while (size > minSize) {
+    const lines = wrapText(measurer, text, size, maxWidth, maxLines);
+    if (!lines.some((l) => l.endsWith('...'))) return { lines, size };
+    size -= 0.5;
+  }
+  return { lines: wrapText(measurer, text, minSize, maxWidth, maxLines), size: minSize };
+};
 function VersoPreview({ college, year, qrDataUrl }) {
   const nameText = (college?.nom || '').toUpperCase();
   const P = u(6);
@@ -2208,13 +2219,13 @@ function VersoPreview({ college, year, qrDataUrl }) {
         )}
       </div>
 
-      {college?.directeur_nom && (
+      {(college?.directeur_prenom || college?.directeur_nom) && (
         <div style={{
           position: 'absolute', left: rightX, top: nameTop, width: rightW,
           textAlign: 'center', fontSize: u(6.5), fontWeight: 700,
         }}>
           <span style={{ borderBottom: '1px solid #000', paddingBottom: u(1) }}>
-            {college.directeur_nom}
+            {`${college?.directeur_prenom || ''} ${college?.directeur_nom || ''}`.trim()}
           </span>
         </div>
       )}
