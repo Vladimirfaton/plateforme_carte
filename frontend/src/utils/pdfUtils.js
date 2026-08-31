@@ -313,7 +313,7 @@ const adresseLigne = [collegeInfo?.adresse_postale, collegeInfo?.commune].filter
 
   // ---- Cadre signature de l'apprenant (legerement reduit pour ne jamais chevaucher la bande)
   const sigW = u(58);
-  const sigH = u(22);
+  const sigH = u(19);
   const sigX = ox + W - P - sigW;
   const sigY = oy + u(15);
   page.drawRectangle({
@@ -766,8 +766,8 @@ const adresseLigne = [collegeInfo?.adresse_postale, collegeInfo?.commune].filter
   d.rect(bandX + seg, u(8), seg, u(4.5), '#FCD900');
   d.rect(bandX + seg * 2, u(8), seg, u(4.5), '#E31C24');
 
-  const sigW = u(58);
-  const sigH = u(22);
+  const sigW = u(54);
+  const sigH = u(19);
   const sigX = W - P - sigW;
   d.strokeRect(sigX, u(15), sigW, sigH, '#333', Math.max(1, u(0.5)));
   ctx.font = `italic ${u(4.2)}px Arial, Helvetica, sans-serif`;

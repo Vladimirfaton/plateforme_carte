@@ -2029,16 +2029,16 @@ function RectoPreview({ student, cls, college, year }) {
     ['Classe :', cls?.code || ''],
   ];
 
-  // Espace reserve au titre (police 10, line-height ~1.25) avant photo/infos
-  const titleBlockH = u(10) * 1.25;
-  const rowsTop = titleTop + titleBlockH + u(4);
+  // Espace reserve au titre (police 10, line-height ~1.05) avant photo/infos
+  const titleBlockH = u(10) * 1.05;
+  const rowsTop = titleTop + titleBlockH + u(1);
   const photoTop = rowsTop;
   const photoH = rows.length * lineH;
   const photoW = photoH * (35 / 45);
   const infoLeft = u(8) + photoW + u(9);
 
-  const sigW = u(58);
-  const sigH = u(22);
+  const sigW = u(54);
+  const sigH = u(19);
 
   const adresseLigne = [college?.adresse_postale, college?.commune].filter(Boolean).join('   ');
 
@@ -2087,7 +2087,7 @@ function RectoPreview({ student, cls, college, year }) {
         )}
       </div>
       <div style={{
-        position: 'absolute', left: u(8), top: photoTop + photoH + u(3),
+        position: 'absolute', left: u(8), top: photoTop + photoH + u(2),
         width: photoW, textAlign: 'center', fontSize: u(7), fontWeight: 700,
       }}>
         Mle : {student?.matricule || ''}
