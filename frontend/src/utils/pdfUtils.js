@@ -151,7 +151,17 @@ export const wrapText = (font, text, size, maxWidth, maxLines = 2) => {
 
   return lines;
 };
-
+// Reduit la taille de police jusqu'à ce que le texte tienne sur `maxLines` lignes
+// sans troncature (au lieu de tronquer a taille fixe)
+const fitWrappedText = (font, text, maxWidth, maxLines, maxSize, minSize) => {
+  let size = maxSize;
+  while (size > minSize) {
+    const lines = wrapText(font, text, size, maxWidth, maxLines);
+    if (!lines.some((l) => l.endsWith('...'))) return { lines, size };
+    size -= 0.5;
+  }
+  return { lines: wrapText(font, text, minSize, maxWidth, maxLines), size: minSize };
+};
 const drawCentered = (page, text, font, size, boxX, boxW, y, color = BLACK) => {
   const str = truncateText(font, text, size, boxW);
   if (!str) return;
@@ -227,9 +237,12 @@ const drawRecto = (page, ox, oy, W, H, ctx) => {
   const cbW = W - (cbX - ox) - P;
   let cy = top - P - u(9);
 
-  wrapText(bold, (collegeInfo?.nom || '').toUpperCase(), u(10), cbW, 2).forEach((line) => {
-    drawCentered(page, line, bold, u(10), cbX, cbW, cy);
-    cy -= u(11);
+  const { lines: nameLines, size: nameSize } = fitWrappedText(
+    bold, (collegeInfo?.nom || '').toUpperCase(), cbW, 2, u(10), u(6)
+  );
+  nameLines.forEach((line) => {
+    drawCentered(page, line, bold, nameSize, cbX, cbW, cy);
+    cy -= nameSize * 1.15;
   });
   if (collegeInfo?.slogan) {
     drawCentered(page, collegeInfo.slogan, italic, u(5.5), cbX, cbW, cy);
@@ -707,8 +720,16 @@ const drawRectoCanvas = (ctx, { student, classInfo, collegeInfo, logoImg, photoI
   const cbX = P + logoW + u(4);
   const cbW = W - cbX - P;
   let cy = H - P - u(9);
-  d.text((collegeInfo?.nom || '').toUpperCase(), cbX + cbW / 2, cy, u(10), 'bold', '#000', 'center');
-  cy -= u(11);
+  const nameLinesCv = wrapCanvasText(d, (collegeInfo?.nom || '').toUpperCase(), u(10), 'bold', cbW, 2);
+  // approx: pas de shrink dynamique cote canvas mesurable facilement avec wrapCanvasText seul,
+  // donc on baisse directement a une taille sure si 2 lignes necessaires
+  let nameSizeCv = u(10);
+  if (nameLinesCv.length > 1 || nameLinesCv.some(l => l.endsWith('...'))) nameSizeCv = u(7.5);
+  const finalLinesCv = wrapCanvasText(d, (collegeInfo?.nom || '').toUpperCase(), nameSizeCv, 'bold', cbW, 2);
+  finalLinesCv.forEach((line) => {
+    d.text(line, cbX + cbW / 2, cy, nameSizeCv, 'bold', '#000', 'center');
+    cy -= nameSizeCv * 1.15;
+  });
   if (collegeInfo?.slogan) {
     d.text(collegeInfo.slogan, cbX + cbW / 2, cy, u(5.5), 'italic', '#000', 'center');
     cy -= u(8);
