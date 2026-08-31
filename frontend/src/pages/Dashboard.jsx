@@ -581,6 +581,7 @@ function CollegeFormPanel({ mode, initial, departement, commune, onClose, onSave
   const [form, setForm] = useState({
     nom: initial?.nom || '',
     slogan: initial?.slogan || '',
+    adresse_postale: initial?.adresse_postale || '',
     directeur_prenom: initial?.directeur_prenom || '',
     directeur_nom: initial?.directeur_nom || '',
     directeur_contact: initial?.directeur_contact || '',
@@ -685,6 +686,16 @@ function CollegeFormPanel({ mode, initial, departement, commune, onClose, onSave
             onChange={e => setForm({ ...form, slogan: e.target.value })}
             placeholder="Prière - Travail - Excellence"
             maxLength={150}
+            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+        </div>
+                <div className="sm:col-span-2">
+          <label className="block text-xs font-medium text-slate-600 mb-1.5">Adresse postale (BP, quartier...)</label>
+          <input
+            type="text"
+            value={form.adresse_postale}
+            onChange={e => setForm({ ...form, adresse_postale: e.target.value })}
+            placeholder="72 BP 165"
             className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>

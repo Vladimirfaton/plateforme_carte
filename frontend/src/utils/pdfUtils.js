@@ -210,8 +210,8 @@ const drawRecto = (page, ox, oy, W, H, ctx) => {
   });
 
   // ---- En-tete : logo ministere + bloc etablissement
-  const logoW = u(115);
-  const logoH = logo ? logoW * (logo.height / logo.width) : u(24);
+  const logoW = u(130);
+  const logoH = logo ? logoW * (logo.height / logo.width) : u(27);
   if (logo) {
     page.drawImage(logo, { x: ox + P, y: top - P - logoH, width: logoW, height: logoH });
   }
@@ -226,34 +226,43 @@ const drawRecto = (page, ox, oy, W, H, ctx) => {
   });
   if (collegeInfo?.slogan) {
     drawCentered(page, collegeInfo.slogan, italic, u(5.5), cbX, cbW, cy);
-    cy -= u(7);
+    cy -= u(8);
   }
-    if (collegeInfo?.email) {
+  const adresseLigne = [collegeInfo?.adresse_postale, collegeInfo?.commune].filter(Boolean).join('   ');
+  if (collegeInfo?.adresse_postale) {
     const iconSize = u(5);
-    const gap = u(2);
-    const contactText = [collegeInfo?.email, collegeInfo?.departement].filter(Boolean).join('   ');
-    const textW = font.widthOfTextAtSize(contactText, u(5.5));
+    const gap = u(2.5);
+    const textW = font.widthOfTextAtSize(adresseLigne, u(5.5));
     const blockW = iconSize + gap + textW;
     const blockX = cbX + (cbW - blockW) / 2;
     drawEnvelope(page, blockX, cy - iconSize * 0.65, iconSize, iconSize * 0.72, BLACK);
-    page.drawText(contactText, { x: blockX + iconSize + gap, y: cy, size: u(5.5), font, color: BLACK });
-    cy -= u(7);
+    page.drawText(adresseLigne, { x: blockX + iconSize + gap, y: cy, size: u(5.5), font, color: BLACK });
+  } else if (collegeInfo?.commune) {
+    drawCentered(page, collegeInfo.commune, font, u(5.5), cbX, cbW, cy);
   }
-  if (collegeInfo?.telephone) {
-    drawCentered(page, `Tel : ${collegeInfo.telephone}`, font, u(5.5), cbX, cbW, cy);
-    cy -= u(7);
-  }
-  const loc = [collegeInfo?.commune, collegeInfo?.departement].filter(Boolean).join(' - ');
-  if (loc) drawCentered(page, loc, font, u(5.5), cbX, cbW, cy);
 
   // ---- Titre
   const titleY = top - P - logoH - u(11);
-  drawCentered(page, `CARTE D'IDENTITE SCOLAIRE   ${year}`, bold, u(9), ox, W, titleY);
+  drawCentered(page, `CARTE D'IDENTITE SCOLAIRE   ${year}`, bold, u(10), ox, W, titleY);
 
-  // ---- Photo + matricule
+  // ---- Lignes d'information (calculees avant la photo pour la dimensionner dessus)
+  const labelSize = u(8);
+  const valueSize = u(8);
+  const lineH = u(10.8); // taille 8 x interligne 1.35
+  const rows = [
+    ['Nom :', student?.nom || ''],
+    ['Prénom(s) :', student?.prenom || ''],
+    ['Né(e) le :', `${formatDateFr(student?.date_naissance)}${student?.lieu_naissance ? `   à   ${student.lieu_naissance}` : ''}`],
+    ['Sexe :', formatSexe(student?.sexe)],
+    ['Nationalité :', student?.nationalite || ''],
+    ['Adresse :', student?.adresse || ''],
+    ['Classe :', classInfo?.code || ''],
+  ];
+
+  // ---- Photo + matricule (hauteur alignee exactement sur le bloc d'informations)
   const photoX = ox + u(8);
-  const photoW = u(35);
-  const photoH = u(45);
+  const photoH = rows.length * lineH;
+  const photoW = photoH * (35 / 45); // conserve le ratio portrait d'origine
   const photoY = titleY - u(8) - photoH;
 
   page.drawRectangle({
@@ -271,22 +280,8 @@ const drawRecto = (page, ox, oy, W, H, ctx) => {
   drawCentered(page, `Mle : ${student?.matricule || ''}`, bold, u(7), photoX, photoW, photoY - u(9));
 
   // ---- Colonne d'informations
-
   const infoX = photoX + photoW + u(9);
   const infoW = W - (infoX - ox) - P;
-  const labelSize = u(8);
-  const valueSize = u(8);
-  const lineH = u(10.8); // 8 × interligne 1.35
-
-  const rows = [
-    ['Nom :', student?.nom || ''],
-    ['Prénom(s) :', student?.prenom || ''],
-    ['Né(e) le :', `${formatDateFr(student?.date_naissance)}${student?.lieu_naissance ? `   à   ${student.lieu_naissance}` : ''}`],
-    ['Sexe :', formatSexe(student?.sexe)],
-    ['Nationalité :', student?.nationalite || ''],
-    ['Adresse :', student?.adresse || ''],
-    ['Classe :', classInfo?.code || ''],
-  ];
 
   let ry = titleY - u(10);
   rows.forEach(([label, value]) => {
@@ -304,11 +299,12 @@ const drawRecto = (page, ox, oy, W, H, ctx) => {
     ry -= lineH;
   });
 
-  // ---- Bande tricolore
-  drawTricolor(page, infoX, oy + u(8), u(85), u(4.5));
+  // ---- Bande tricolore centree sur toute la largeur de la carte
+  const bandW = u(85);
+  drawTricolor(page, ox + (W - bandW) / 2, oy + u(8), bandW, u(4.5));
 
-  // ---- Cadre signature de l'apprenant
-  const sigW = u(64);
+  // ---- Cadre signature de l'apprenant (legerement reduit pour ne jamais chevaucher la bande)
+  const sigW = u(58);
   const sigH = u(22);
   const sigX = ox + W - P - sigW;
   const sigY = oy + u(15);
@@ -676,6 +672,7 @@ const drawEnvelopeCv = (d, x, y, w, h, color = '#000') => {
   d.line(x, y + h, x + w / 2, y + h * 0.35, color, 1);
   d.line(x + w, y + h, x + w / 2, y + h * 0.35, color, 1);
 };
+
 const drawRectoCanvas = (ctx, { student, classInfo, collegeInfo, logoImg, photoImg, year }) => {
   const W = ctx.canvas.width;
   const H = ctx.canvas.height;
@@ -686,43 +683,37 @@ const drawRectoCanvas = (ctx, { student, classInfo, collegeInfo, logoImg, photoI
 
   d.rect(0, 0, W, H, '#FFFFFF');
 
-  const logoW = u(104);
-  const logoH = logoImg ? logoW * (logoImg.height / logoImg.width) : u(22);
+  const logoW = u(130);
+  const logoH = logoImg ? logoW * (logoImg.height / logoImg.width) : u(27);
   if (logoImg) d.image(logoImg, P, H - P - logoH, logoW, logoH);
 
   const cbX = P + logoW + u(4);
   const cbW = W - cbX - P;
-  let cy = H - P - u(7);
+  let cy = H - P - u(9);
   d.text((collegeInfo?.nom || '').toUpperCase(), cbX + cbW / 2, cy, u(10), 'bold', '#000', 'center');
-  cy -= u(12);
+  cy -= u(11);
   if (collegeInfo?.slogan) {
     d.text(collegeInfo.slogan, cbX + cbW / 2, cy, u(5.5), 'italic', '#000', 'center');
-    cy -= u(7);
+    cy -= u(8);
   }
-  if (collegeInfo?.telephone) {
-    d.text(`Tel : ${collegeInfo.telephone}`, cbX + cbW / 2, cy, u(5.5), 'normal', '#000', 'center');
-    cy -= u(7);
+  const adresseLigne = [collegeInfo?.adresse_postale, collegeInfo?.commune].filter(Boolean).join('   ');
+  if (collegeInfo?.adresse_postale) {
+    const iconSize = u(5);
+    const gap = u(2.5);
+    const textW = d.measure(adresseLigne, u(5.5), 'normal');
+    const blockW = iconSize + gap + textW;
+    const blockX = cbX + (cbW - blockW) / 2;
+    drawEnvelopeCv(d, blockX, cy - iconSize * 0.65, iconSize, iconSize * 0.72, '#000');
+    d.text(adresseLigne, blockX + iconSize + gap, cy, u(5.5), 'normal', '#000', 'left');
+  } else if (collegeInfo?.commune) {
+    d.text(collegeInfo.commune, cbX + cbW / 2, cy, u(5.5), 'normal', '#000', 'center');
   }
-  const loc = [collegeInfo?.commune, collegeInfo?.departement].filter(Boolean).join(' - ');
-  if (loc) d.text(loc, cbX + cbW / 2, cy, u(5.5), 'normal', '#000', 'center');
 
   const titleY = H - P - logoH - u(11);
-  d.text(`CARTE D'IDENTITE SCOLAIRE   ${year}`, W / 2, titleY, u(9), 'bold', '#000', 'center');
+  d.text(`CARTE D'IDENTITE SCOLAIRE   ${year}`, W / 2, titleY, u(10), 'bold', '#000', 'center');
 
-  const photoX = u(8);
-  const photoW = u(35);
-  const photoH = u(45);
-  const photoY = titleY - u(8) - photoH;
-  d.rect(photoX, photoY, photoW, photoH, '#141414');
-  if (photoImg) {
-    const { w, h } = fitContain(photoImg.width, photoImg.height, photoW, photoH);
-    d.image(photoImg, photoX + (photoW - w) / 2, photoY + (photoH - h) / 2, w, h);
-  }
-  d.text(`Mle : ${student?.matricule || ''}`, photoX + photoW / 2, photoY - u(9), u(7), 'bold', '#000', 'center');
-
-  const infoX = photoX + photoW + u(9);
   const labelSize = u(8);
-  const lineH = u(10,8);
+  const lineH = u(10.8);
   const rows = [
     ['Nom :', student?.nom || ''],
     ['Prénom(s) :', student?.prenom || ''],
@@ -732,6 +723,19 @@ const drawRectoCanvas = (ctx, { student, classInfo, collegeInfo, logoImg, photoI
     ['Adresse :', student?.adresse || ''],
     ['Classe :', classInfo?.code || ''],
   ];
+
+  const photoX = u(8);
+  const photoH = rows.length * lineH;
+  const photoW = photoH * (35 / 45);
+  const photoY = titleY - u(8) - photoH;
+  d.rect(photoX, photoY, photoW, photoH, '#141414');
+  if (photoImg) {
+    const { w, h } = fitContain(photoImg.width, photoImg.height, photoW, photoH);
+    d.image(photoImg, photoX + (photoW - w) / 2, photoY + (photoH - h) / 2, w, h);
+  }
+  d.text(`Mle : ${student?.matricule || ''}`, photoX + photoW / 2, photoY - u(9), u(7), 'bold', '#000', 'center');
+
+  const infoX = photoX + photoW + u(9);
   let ry = titleY - u(10);
   rows.forEach(([label, value]) => {
     const lw = d.measure(label, labelSize, 'normal');
@@ -741,14 +745,14 @@ const drawRectoCanvas = (ctx, { student, classInfo, collegeInfo, logoImg, photoI
     ry -= lineH;
   });
 
-  const bandX = infoX;
   const bandW = u(85);
+  const bandX = (W - bandW) / 2;
   const seg = bandW / 3;
   d.rect(bandX, u(8), seg, u(4.5), '#00873E');
   d.rect(bandX + seg, u(8), seg, u(4.5), '#FCD900');
   d.rect(bandX + seg * 2, u(8), seg, u(4.5), '#E31C24');
 
-  const sigW = u(64);
+  const sigW = u(58);
   const sigH = u(22);
   const sigX = W - P - sigW;
   d.strokeRect(sigX, u(15), sigW, sigH, '#333', Math.max(1, u(0.5)));
