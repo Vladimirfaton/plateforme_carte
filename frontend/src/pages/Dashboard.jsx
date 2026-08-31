@@ -2013,15 +2013,11 @@ function Tricolor({ left, top, width, height }) {
 }
 
 function RectoPreview({ student, cls, college, year }) {
-  const logoW = u(104);
+  const logoW = u(130);
   const logoH = logoW * 0.214;
-  const titleTop = u(5) + logoH + u(6);
-  const photoTop = titleTop + u(16);
-  const photoW = u(35);
-  const photoH = u(45);
-  const infoLeft = u(8) + photoW + u(9);
-  const rowH = u(8.5);
-  const fs = u(6.5);
+  const titleTop = u(5) + logoH + u(11);
+  const labelSize = u(8);
+  const lineH = u(12); // taille 8 x interligne 1.5
 
   const rows = [
     ['Nom :', student?.nom || ''],
@@ -2033,8 +2029,15 @@ function RectoPreview({ student, cls, college, year }) {
     ['Classe :', cls?.code || ''],
   ];
 
-  const sigW = u(64);
+  const photoTop = titleTop + u(8);
+  const photoH = rows.length * lineH;
+  const photoW = photoH * (35 / 45);
+  const infoLeft = u(8) + photoW + u(9);
+
+  const sigW = u(58);
   const sigH = u(22);
+
+  const adresseLigne = [college?.adresse_postale, college?.commune].filter(Boolean).join('   ');
 
   return (
     <div
@@ -2051,16 +2054,22 @@ function RectoPreview({ student, cls, college, year }) {
         width: PREVIEW_W - (u(5) + logoW + u(4)) - u(5),
         textAlign: 'center', lineHeight: 1.15,
       }}>
-        <div style={{ fontSize: u(7), fontWeight: 700 }}>{(college?.nom || '').toUpperCase()}</div>
-        {college?.telephone && <div style={{ fontSize: u(5.5), marginTop: u(2) }}>Tel : {college.telephone}</div>}
-        <div style={{ fontSize: u(5.5) }}>
-          {[college?.commune, college?.departement].filter(Boolean).join(' - ')}
-        </div>
+        <div style={{ fontSize: u(10), fontWeight: 700 }}>{(college?.nom || '').toUpperCase()}</div>
+        {college?.slogan && (
+          <div style={{ fontSize: u(5.5), fontStyle: 'italic', marginTop: u(3) }}>{college.slogan}</div>
+        )}
+        {college?.adresse_postale ? (
+          <div style={{ fontSize: u(5.5), marginTop: u(3) }}>
+            <span style={{ marginRight: u(2) }}>✉</span>{adresseLigne}
+          </div>
+        ) : college?.commune ? (
+          <div style={{ fontSize: u(5.5), marginTop: u(3) }}>{college.commune}</div>
+        ) : null}
       </div>
 
       <div style={{
         position: 'absolute', left: 0, top: titleTop, width: PREVIEW_W,
-        textAlign: 'center', fontSize: u(9), fontWeight: 700, letterSpacing: 0.2,
+        textAlign: 'center', fontSize: u(10), fontWeight: 700, letterSpacing: 0.2,
       }}>
         CARTE D'IDENTITE SCOLAIRE&nbsp;&nbsp;&nbsp;{year}
       </div>
@@ -2083,14 +2092,14 @@ function RectoPreview({ student, cls, college, year }) {
 
       <div style={{ position: 'absolute', left: infoLeft, top: photoTop - u(3), right: u(5) }}>
         {rows.map(([label, value]) => (
-          <div key={label} style={{ height: rowH, fontSize: fs, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+          <div key={label} style={{ height: lineH, fontSize: labelSize, whiteSpace: 'nowrap', overflow: 'hidden' }}>
             <span style={{ textDecoration: 'underline' }}>{label}</span>
             <span style={{ fontWeight: 700, marginLeft: u(6) }}>{value}</span>
           </div>
         ))}
       </div>
 
-      <Tricolor left={infoLeft} top={PREVIEW_H - u(8) - u(4.5)} width={u(85)} height={u(4.5)} />
+      <Tricolor left={(PREVIEW_W - u(85)) / 2} top={PREVIEW_H - u(8) - u(4.5)} width={u(85)} height={u(4.5)} />
 
       <div style={{
         position: 'absolute', right: u(5), top: PREVIEW_H - u(15) - sigH,

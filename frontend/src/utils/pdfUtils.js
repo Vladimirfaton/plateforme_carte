@@ -248,7 +248,7 @@ const drawRecto = (page, ox, oy, W, H, ctx) => {
   // ---- Lignes d'information (calculees avant la photo pour la dimensionner dessus)
   const labelSize = u(8);
   const valueSize = u(8);
-  const lineH = u(10.8); // taille 8 x interligne 1.35
+  const lineH = u(12); // taille 8 x interligne 1.5
   const rows = [
     ['Nom :', student?.nom || ''],
     ['Prénom(s) :', student?.prenom || ''],
@@ -713,7 +713,7 @@ const drawRectoCanvas = (ctx, { student, classInfo, collegeInfo, logoImg, photoI
   d.text(`CARTE D'IDENTITE SCOLAIRE   ${year}`, W / 2, titleY, u(10), 'bold', '#000', 'center');
 
   const labelSize = u(8);
-  const lineH = u(10.8);
+  const lineH = u(12);
   const rows = [
     ['Nom :', student?.nom || ''],
     ['Prénom(s) :', student?.prenom || ''],
