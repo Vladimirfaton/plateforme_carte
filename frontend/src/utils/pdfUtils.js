@@ -261,7 +261,7 @@ const drawRecto = (page, ox, oy, W, H, ctx) => {
   } else if (collegeInfo?.commune) {
     drawCentered(page, collegeInfo.commune, font, u(5.5), cbX, cbW, cy);
   }
-  const headerBottom = cy - u(6);
+  const headerBottom = cy - u(11);
 
   // ---- Titre (descend automatiquement si le bloc etablissement depasse
   // la hauteur du logo, ex: nom de college long sur 2 lignes + slogan + adresse)
@@ -747,7 +747,7 @@ const adresseLigne = [collegeInfo?.adresse_postale, collegeInfo?.commune].filter
   } else if (collegeInfo?.commune) {
     d.text(collegeInfo.commune, cbX + cbW / 2, cy, u(5.5), 'normal', '#000', 'center');
   }
-  const headerBottom = cy - u(6);
+  const headerBottom = cy - u(11);
 
   const titleY = Math.min(H - P - logoH - u(11), headerBottom);
   d.text(`CARTE D'IDENTITE SCOLAIRE   ${year}`, W / 2, titleY, u(10), 'bold', '#000', 'center');

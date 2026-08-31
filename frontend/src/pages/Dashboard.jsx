@@ -2036,10 +2036,10 @@ function RectoPreview({ student, cls, college, year }) {
   );
   const nameLineH = nameSize * 1.15;
   let headerBottom = u(9);
-  headerBottom += nameLines.length * nameLineH;
+  headerBottom += nameLines.length * u(11);
   if (college?.slogan) headerBottom += u(8);
   const adresseLigne = [college?.adresse_postale, college?.commune].filter(Boolean).join('   ');
-  if (college?.adresse_postale || college?.commune) headerBottom += u(6);
+  if (college?.adresse_postale || college?.commune) headerBottom += u(11);
 
   // ---- Titre : descend si le bloc etablissement depasse la hauteur du logo
   const titleTop = Math.max(u(5) + logoH + u(11), headerBottom);
