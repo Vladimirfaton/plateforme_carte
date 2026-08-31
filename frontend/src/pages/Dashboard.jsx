@@ -2029,7 +2029,10 @@ function RectoPreview({ student, cls, college, year }) {
     ['Classe :', cls?.code || ''],
   ];
 
-  const photoTop = titleTop + u(8);
+  // Espace reserve au titre (police 10, line-height ~1.25) avant photo/infos
+  const titleBlockH = u(10) * 1.25;
+  const rowsTop = titleTop + titleBlockH + u(4);
+  const photoTop = rowsTop;
   const photoH = rows.length * lineH;
   const photoW = photoH * (35 / 45);
   const infoLeft = u(8) + photoW + u(9);
@@ -2090,7 +2093,7 @@ function RectoPreview({ student, cls, college, year }) {
         Mle : {student?.matricule || ''}
       </div>
 
-      <div style={{ position: 'absolute', left: infoLeft, top: photoTop - u(3), right: u(5) }}>
+      <div style={{ position: 'absolute', left: infoLeft, top: rowsTop, right: u(5) }}>
         {rows.map(([label, value]) => (
           <div key={label} style={{ height: lineH, fontSize: labelSize, whiteSpace: 'nowrap', overflow: 'hidden' }}>
             <span style={{ textDecoration: 'underline' }}>{label}</span>

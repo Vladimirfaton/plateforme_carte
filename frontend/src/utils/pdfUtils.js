@@ -228,15 +228,16 @@ const drawRecto = (page, ox, oy, W, H, ctx) => {
     drawCentered(page, collegeInfo.slogan, italic, u(5.5), cbX, cbW, cy);
     cy -= u(8);
   }
-  const adresseLigne = [collegeInfo?.adresse_postale, collegeInfo?.commune].filter(Boolean).join('   ');
+const adresseLigne = [collegeInfo?.adresse_postale, collegeInfo?.commune].filter(Boolean).join('   ');
   if (collegeInfo?.adresse_postale) {
-    const iconSize = u(5);
+    const iconW = u(6);
+    const iconH = u(4.3);
     const gap = u(2.5);
     const textW = font.widthOfTextAtSize(adresseLigne, u(5.5));
-    const blockW = iconSize + gap + textW;
+    const blockW = iconW + gap + textW;
     const blockX = cbX + (cbW - blockW) / 2;
-    drawEnvelope(page, blockX, cy - iconSize * 0.65, iconSize, iconSize * 0.72, BLACK);
-    page.drawText(adresseLigne, { x: blockX + iconSize + gap, y: cy, size: u(5.5), font, color: BLACK });
+    drawEnvelope(page, blockX, cy - u(0.7), iconW, iconH, BLACK);
+    page.drawText(adresseLigne, { x: blockX + iconW + gap, y: cy, size: u(5.5), font, color: BLACK });
   } else if (collegeInfo?.commune) {
     drawCentered(page, collegeInfo.commune, font, u(5.5), cbX, cbW, cy);
   }
@@ -260,10 +261,17 @@ const drawRecto = (page, ox, oy, W, H, ctx) => {
   ];
 
   // ---- Photo + matricule (hauteur alignee exactement sur le bloc d'informations)
+   // ---- Photo + matricule (hauteur alignee precisement sur le bloc d'informations,
+  // en tenant compte de l'ascendante/descendante du texte, pas juste du nombre de lignes)
   const photoX = ox + u(8);
-  const photoH = rows.length * lineH;
+  const rowsFirstBaseline = titleY - u(10);
+  const ASCENT = 0.74;
+  const DESCENT = 0.22;
+  const rowsTop = rowsFirstBaseline + labelSize * ASCENT;
+  const rowsBottom = rowsFirstBaseline - (rows.length - 1) * lineH - labelSize * DESCENT;
+  const photoH = rowsTop - rowsBottom;
   const photoW = photoH * (35 / 45); // conserve le ratio portrait d'origine
-  const photoY = titleY - u(8) - photoH;
+  const photoY = rowsBottom;
 
   page.drawRectangle({
     x: photoX, y: photoY, width: photoW, height: photoH,
@@ -696,15 +704,16 @@ const drawRectoCanvas = (ctx, { student, classInfo, collegeInfo, logoImg, photoI
     d.text(collegeInfo.slogan, cbX + cbW / 2, cy, u(5.5), 'italic', '#000', 'center');
     cy -= u(8);
   }
-  const adresseLigne = [collegeInfo?.adresse_postale, collegeInfo?.commune].filter(Boolean).join('   ');
+const adresseLigne = [collegeInfo?.adresse_postale, collegeInfo?.commune].filter(Boolean).join('   ');
   if (collegeInfo?.adresse_postale) {
-    const iconSize = u(5);
+    const iconW = u(6);
+    const iconH = u(4.3);
     const gap = u(2.5);
     const textW = d.measure(adresseLigne, u(5.5), 'normal');
-    const blockW = iconSize + gap + textW;
+    const blockW = iconW + gap + textW;
     const blockX = cbX + (cbW - blockW) / 2;
-    drawEnvelopeCv(d, blockX, cy - iconSize * 0.65, iconSize, iconSize * 0.72, '#000');
-    d.text(adresseLigne, blockX + iconSize + gap, cy, u(5.5), 'normal', '#000', 'left');
+    drawEnvelopeCv(d, blockX, cy - u(0.7), iconW, iconH, '#000');
+    d.text(adresseLigne, blockX + iconW + gap, cy, u(5.5), 'normal', '#000', 'left');
   } else if (collegeInfo?.commune) {
     d.text(collegeInfo.commune, cbX + cbW / 2, cy, u(5.5), 'normal', '#000', 'center');
   }
@@ -725,9 +734,14 @@ const drawRectoCanvas = (ctx, { student, classInfo, collegeInfo, logoImg, photoI
   ];
 
   const photoX = u(8);
-  const photoH = rows.length * lineH;
+  const rowsFirstBaseline = titleY - u(10);
+  const ASCENT = 0.74;
+  const DESCENT = 0.22;
+  const rowsTop = rowsFirstBaseline + labelSize * ASCENT;
+  const rowsBottom = rowsFirstBaseline - (rows.length - 1) * lineH - labelSize * DESCENT;
+  const photoH = rowsTop - rowsBottom;
   const photoW = photoH * (35 / 45);
-  const photoY = titleY - u(8) - photoH;
+  const photoY = rowsBottom;
   d.rect(photoX, photoY, photoW, photoH, '#141414');
   if (photoImg) {
     const { w, h } = fitContain(photoImg.width, photoImg.height, photoW, photoH);
