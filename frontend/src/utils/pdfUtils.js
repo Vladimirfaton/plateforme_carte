@@ -127,21 +127,28 @@ export const wrapText = (font, text, size, maxWidth, maxLines = 2) => {
   const words = sanitize(text).split(/\s+/).filter(Boolean);
   const lines = [];
   let current = '';
-  for (const word of words) {
+  let idx = 0;
+
+  while (idx < words.length && lines.length < maxLines) {
+    const word = words[idx];
     const test = current ? `${current} ${word}` : word;
     if (font.widthOfTextAtSize(test, size) <= maxWidth || !current) {
       current = test;
+      idx++;
     } else {
       lines.push(current);
-      current = word;
-      if (lines.length === maxLines) break;
+      current = '';
     }
   }
-  if (lines.length < maxLines && current) lines.push(current);
-  if (lines.length > maxLines) lines.length = maxLines;
-  if (lines.length === maxLines) {
-    lines[maxLines - 1] = truncateText(font, lines[maxLines - 1], size, maxWidth);
+  if (current) lines.push(current);
+
+  // Mots restants non places -> tronquer la derniere ligne avec "..."
+  if (idx < words.length && lines.length > 0) {
+    const remaining = words.slice(idx).join(' ');
+    const lastWithRemaining = `${lines[lines.length - 1]} ${remaining}`;
+    lines[lines.length - 1] = truncateText(font, lastWithRemaining, size, maxWidth);
   }
+
   return lines;
 };
 
@@ -395,7 +402,7 @@ const drawVerso = (page, ox, oy, W, H, ctx) => {
   // sinon : zone laissee vierge pour une signature manuscrite
 
   const nameY = sigY - u(8);
-  const directorName = sanitize(collegeInfo?.directeur_nom || '', collegeInfo?.directeur_prenom || '');
+  const directorName = sanitize(`${collegeInfo?.directeur_prenom || ''} ${collegeInfo?.directeur_nom || ''}`.trim());
   if (directorName) {
     const dirSize = u(6.5);
     const dirW = bold.widthOfTextAtSize(directorName, dirSize);
@@ -833,7 +840,7 @@ const drawVersoCanvas = (ctx, { collegeInfo, qrImg, signImg, year }) => {
   // sinon : zone laissee vierge pour une signature manuscrite
 
   const nameY = sigY - u(8);
-  const directorName = sanitize(collegeInfo?.directeur_nom || '');
+  const directorName = sanitize(`${collegeInfo?.directeur_prenom || ''} ${collegeInfo?.directeur_nom || ''}`.trim());
   if (directorName) {
     const dirSize = u(6.5);
     const dirW = d.measure(directorName, dirSize, 'bold');
