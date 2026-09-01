@@ -153,7 +153,7 @@ export const wrapText = (font, text, size, maxWidth, maxLines = 2) => {
 };
 // Reduit la taille de police jusqu'à ce que le texte tienne sur `maxLines` lignes
 // sans troncature (au lieu de tronquer a taille fixe)
-const fitWrappedText = (font, text, maxWidth, maxLines, maxSize, minSize) => {
+  const fitWrappedText = (font, text, maxWidth, maxLines, maxSize, minSize) => {
   let size = maxSize;
   while (size > minSize) {
     const lines = wrapText(font, text, size, maxWidth, maxLines);
@@ -232,42 +232,70 @@ const drawRecto = (page, ox, oy, W, H, ctx) => {
   if (logo) {
     page.drawImage(logo, { x: ox + P, y: top - P - logoH, width: logoW, height: logoH });
   }
-
   const cbX = ox + P + logoW + u(4);
   const cbW = W - (cbX - ox) - P;
-  let cy = top - P - u(9);
 
-  const { lines: nameLines, size: nameSize } = fitWrappedText(
-    bold, (collegeInfo?.nom || '').toUpperCase(), cbW, 2, u(10), u(6)
-  );
+  // ---- Repartition de la hauteur du logo entre nom / slogan / adresse : le nom
+  // recoit naturellement la plus grande part, slogan/adresse se partagent le reste.
+  // Le bloc entier ne doit jamais depasser logoH, pour que le titre garde une
+  // position fixe quelle que soit la longueur du nom de l'etablissement.
+  const nomText = (collegeInfo?.nom || '').toUpperCase();
+  const hasSlogan = !!collegeInfo?.slogan;
+  const adresseLigne = [collegeInfo?.adresse_postale, collegeInfo?.commune].filter(Boolean).join('   ');
+  const hasAddr = !!(collegeInfo?.adresse_postale || collegeInfo?.commune);
+
+  const NAME_MAX = u(7);
+  const NAME_MIN = u(5);
+  const SMALL_MAX = u(5.5);
+  const SMALL_MIN = u(4);
+
+  let nameLinesCount = 1;
+  let totalRows = nameLinesCount + (hasSlogan ? 1 : 0) + (hasAddr ? 1 : 0);
+  let rowH = logoH / totalRows;
+  let nameSize = Math.max(Math.min(NAME_MAX, rowH / 1.15), NAME_MIN);
+  const fitsOneLine = bold.widthOfTextAtSize(nomText, nameSize) <= cbW;
+
+  let nameLines;
+  if (fitsOneLine) {
+    nameLines = [nomText];
+  } else {
+    nameLinesCount = 2;
+    totalRows = nameLinesCount + (hasSlogan ? 1 : 0) + (hasAddr ? 1 : 0);
+    rowH = logoH / totalRows;
+    nameSize = Math.max(Math.min(NAME_MAX, rowH / 1.15), NAME_MIN);
+    nameLines = wrapText(bold, nomText, nameSize, cbW, 2);
+  }
+  const sloganSize = hasSlogan ? Math.max(Math.min(SMALL_MAX, rowH / 1.15), SMALL_MIN) : 0;
+  const addrSize = hasAddr ? Math.max(Math.min(SMALL_MAX, rowH / 1.15), SMALL_MIN) : 0;
+
+  let cy = top - P - nameSize * 0.85;
   nameLines.forEach((line) => {
     drawCentered(page, line, bold, nameSize, cbX, cbW, cy);
     cy -= nameSize * 1.15;
   });
-  if (collegeInfo?.slogan) {
-    drawCentered(page, collegeInfo.slogan, italic, u(5.5), cbX, cbW, cy);
-    cy -= u(8);
+  if (hasSlogan) {
+    drawCentered(page, collegeInfo.slogan, italic, sloganSize, cbX, cbW, cy);
+    cy -= sloganSize * 1.15;
   }
-  const adresseLigne = [collegeInfo?.adresse_postale, collegeInfo?.commune].filter(Boolean).join('   ');
-  if (collegeInfo?.adresse_postale) {
-    const iconW = u(6);
-    const iconH = u(4.3);
-    const gap = u(2.5);
-    const textW = font.widthOfTextAtSize(adresseLigne, u(5.5));
-    const blockW = iconW + gap + textW;
-    const blockX = cbX + (cbW - blockW) / 2;
-    drawEnvelope(page, blockX, cy - u(0.7), iconW, iconH, BLACK);
-    page.drawText(adresseLigne, { x: blockX + iconW + gap, y: cy, size: u(5.5), font, color: BLACK });
-  } else if (collegeInfo?.commune) {
-    drawCentered(page, collegeInfo.commune, font, u(5.5), cbX, cbW, cy);
+  if (hasAddr) {
+    if (collegeInfo?.adresse_postale) {
+      const iconH = addrSize * 0.85;
+      const iconW = iconH * 1.4;
+      const gap = addrSize * 0.45;
+      const textW = font.widthOfTextAtSize(adresseLigne, addrSize);
+      const blockW = iconW + gap + textW;
+      const blockX = cbX + (cbW - blockW) / 2;
+      drawEnvelope(page, blockX, cy - iconH * 0.15, iconW, iconH, BLACK);
+      page.drawText(adresseLigne, { x: blockX + iconW + gap, y: cy, size: addrSize, font, color: BLACK });
+    } else {
+      drawCentered(page, collegeInfo.commune, font, addrSize, cbX, cbW, cy);
+    }
   }
-  const headerBottom = cy - u(11);
 
-  // ---- Titre (descend automatiquement si le bloc etablissement depasse
-  // la hauteur du logo, ex: nom de college long sur 2 lignes + slogan + adresse)
-  const titleY = Math.min(top - P - logoH - u(11), headerBottom);
+  // ---- Titre : position fixe, le bloc etablissement est contraint pour toujours
+  // tenir dans la hauteur du logo
+  const titleY = top - P - logoH - u(11);
   drawCentered(page, `CARTE D'IDENTITE SCOLAIRE   ${year}`, bold, u(10), ox, W, titleY);
-
   // ---- Lignes d'information (calculees avant la photo pour la dimensionner dessus)
   const labelSize = u(8);
   const valueSize = u(8);
@@ -717,41 +745,65 @@ const drawRectoCanvas = (ctx, { student, classInfo, collegeInfo, logoImg, photoI
   const logoH = logoImg ? logoW * (logoImg.height / logoImg.width) : u(27);
   if (logoImg) d.image(logoImg, P, H - P - logoH, logoW, logoH);
 
+// APRÈS
   const cbX = P + logoW + u(4);
   const cbW = W - cbX - P;
-  let cy = H - P - u(9);
-  const nameLinesCv = wrapCanvasText(d, (collegeInfo?.nom || '').toUpperCase(), u(10), 'bold', cbW, 2);
-  // approx: pas de shrink dynamique cote canvas mesurable facilement avec wrapCanvasText seul,
-  // donc on baisse directement a une taille sure si 2 lignes necessaires
-  let nameSizeCv = u(10);
-  if (nameLinesCv.length > 1 || nameLinesCv.some(l => l.endsWith('...'))) nameSizeCv = u(7.5);
-  const finalLinesCv = wrapCanvasText(d, (collegeInfo?.nom || '').toUpperCase(), nameSizeCv, 'bold', cbW, 2);
+
+  const nomText = (collegeInfo?.nom || '').toUpperCase();
+  const hasSlogan = !!collegeInfo?.slogan;
+  const adresseLigne = [collegeInfo?.adresse_postale, collegeInfo?.commune].filter(Boolean).join('   ');
+  const hasAddr = !!(collegeInfo?.adresse_postale || collegeInfo?.commune);
+
+  const NAME_MAX = u(7);
+  const NAME_MIN = u(5);
+  const SMALL_MAX = u(5.5);
+  const SMALL_MIN = u(4);
+
+  let nameLinesCount = 1;
+  let totalRows = nameLinesCount + (hasSlogan ? 1 : 0) + (hasAddr ? 1 : 0);
+  let rowH = logoH / totalRows;
+  let nameSizeCv = Math.max(Math.min(NAME_MAX, rowH / 1.15), NAME_MIN);
+  const fitsOneLineCv = d.measure(nomText, nameSizeCv, 'bold') <= cbW;
+
+  let finalLinesCv;
+  if (fitsOneLineCv) {
+    finalLinesCv = [nomText];
+  } else {
+    nameLinesCount = 2;
+    totalRows = nameLinesCount + (hasSlogan ? 1 : 0) + (hasAddr ? 1 : 0);
+    rowH = logoH / totalRows;
+    nameSizeCv = Math.max(Math.min(NAME_MAX, rowH / 1.15), NAME_MIN);
+    finalLinesCv = wrapCanvasText(d, nomText, nameSizeCv, 'bold', cbW, 2);
+  }
+  const sloganSizeCv = hasSlogan ? Math.max(Math.min(SMALL_MAX, rowH / 1.15), SMALL_MIN) : 0;
+  const addrSizeCv = hasAddr ? Math.max(Math.min(SMALL_MAX, rowH / 1.15), SMALL_MIN) : 0;
+
+  let cy = H - P - nameSizeCv * 0.85;
   finalLinesCv.forEach((line) => {
     d.text(line, cbX + cbW / 2, cy, nameSizeCv, 'bold', '#000', 'center');
     cy -= nameSizeCv * 1.15;
   });
-  if (collegeInfo?.slogan) {
-    d.text(collegeInfo.slogan, cbX + cbW / 2, cy, u(5.5), 'italic', '#000', 'center');
-    cy -= u(8);
+  if (hasSlogan) {
+    d.text(collegeInfo.slogan, cbX + cbW / 2, cy, sloganSizeCv, 'italic', '#000', 'center');
+    cy -= sloganSizeCv * 1.15;
   }
-const adresseLigne = [collegeInfo?.adresse_postale, collegeInfo?.commune].filter(Boolean).join('   ');
-  if (collegeInfo?.adresse_postale) {
-    const iconW = u(6);
-    const iconH = u(4.3);
-    const gap = u(2.5);
-    const textW = d.measure(adresseLigne, u(5.5), 'normal');
-    const blockW = iconW + gap + textW;
-    const blockX = cbX + (cbW - blockW) / 2;
-    drawEnvelopeCv(d, blockX, cy - u(0.7), iconW, iconH, '#000');
-    d.text(adresseLigne, blockX + iconW + gap, cy, u(5.5), 'normal', '#000', 'left');
-  } else if (collegeInfo?.commune) {
-    d.text(collegeInfo.commune, cbX + cbW / 2, cy, u(5.5), 'normal', '#000', 'center');
+  if (hasAddr) {
+    if (collegeInfo?.adresse_postale) {
+      const iconH = addrSizeCv * 0.85;
+      const iconW = iconH * 1.4;
+      const gap = addrSizeCv * 0.45;
+      const textW = d.measure(adresseLigne, addrSizeCv, 'normal');
+      const blockW = iconW + gap + textW;
+      const blockX = cbX + (cbW - blockW) / 2;
+      drawEnvelopeCv(d, blockX, cy - iconH * 0.15, iconW, iconH, '#000');
+      d.text(adresseLigne, blockX + iconW + gap, cy, addrSizeCv, 'normal', '#000', 'left');
+    } else {
+      d.text(collegeInfo.commune, cbX + cbW / 2, cy, addrSizeCv, 'normal', '#000', 'center');
+    }
   }
-  const headerBottom = cy - u(11);
 
-  const titleY = Math.min(H - P - logoH - u(11), headerBottom);
+  const titleY = H - P - logoH - u(11);
   d.text(`CARTE D'IDENTITE SCOLAIRE   ${year}`, W / 2, titleY, u(10), 'bold', '#000', 'center');
-
   const labelSize = u(8);
   const lineH = u(12);
   const rows = [

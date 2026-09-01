@@ -2015,6 +2015,7 @@ function Tricolor({ left, top, width, height }) {
 function RectoPreview({ student, cls, college, year }) {
   const logoW = u(130);
   const logoH = logoW * 0.214;
+  const P = u(5);
   const labelSize = u(8);
   const lineH = u(12); // taille 8 x interligne 1.5
 
@@ -2028,27 +2029,57 @@ function RectoPreview({ student, cls, college, year }) {
     ['Classe :', cls?.code || ''],
   ];
 
-  // ---- Bloc etablissement (nom 1-2 lignes + slogan + adresse), mesure comme le PDF
-  const headerBoxW = PREVIEW_W - (u(5) + logoW + u(4)) - u(5);
-  const nameText = (college?.nom || '').toUpperCase();
-  const { lines: nameLines, size: nameSize } = fitWrappedText(
-    previewMeasurer, nameText, headerBoxW, 2, u(10), u(6)
-  );
-  const nameLineH = nameSize * 1.15;
-  let headerBottom = u(9);
-  headerBottom += nameLines.length * u(11);
-  if (college?.slogan) headerBottom += u(8);
+  // ---- Repartition de la hauteur du logo entre nom / slogan / adresse
+  // (miroir exact de la logique de drawRecto dans pdfUtils.js)
+  const headerBoxW = PREVIEW_W - (P + logoW + u(4)) - u(5);
+  const nomText = (college?.nom || '').toUpperCase();
+  const hasSlogan = !!college?.slogan;
   const adresseLigne = [college?.adresse_postale, college?.commune].filter(Boolean).join('   ');
-  if (college?.adresse_postale || college?.commune) headerBottom += u(11);
+  const hasAddr = !!(college?.adresse_postale || college?.commune);
 
-  // ---- Titre : descend si le bloc etablissement depasse la hauteur du logo
-  const titleTop = Math.max(u(5) + logoH + u(11), headerBottom);
+  const NAME_MAX = u(7);
+  const NAME_MIN = u(5);
+  const SMALL_MAX = u(5.5);
+  const SMALL_MIN = u(4);
 
-  const rowsTop = titleTop + u(10) * 1.05 + u(1);
+  let nameLinesCount = 1;
+  let totalRows = nameLinesCount + (hasSlogan ? 1 : 0) + (hasAddr ? 1 : 0);
+  let rowH = logoH / totalRows;
+  let nameSize = Math.max(Math.min(NAME_MAX, rowH / 1.15), NAME_MIN);
+  const fitsOneLine = previewMeasurer.widthOfTextAtSize(nomText, nameSize) <= headerBoxW;
+
+  let nameLines;
+  if (fitsOneLine) {
+    nameLines = [nomText];
+  } else {
+    nameLinesCount = 2;
+    totalRows = nameLinesCount + (hasSlogan ? 1 : 0) + (hasAddr ? 1 : 0);
+    rowH = logoH / totalRows;
+    nameSize = Math.max(Math.min(NAME_MAX, rowH / 1.15), NAME_MIN);
+    nameLines = wrapText(previewMeasurer, nomText, nameSize, headerBoxW, 2);
+  }
+  const sloganSize = hasSlogan ? Math.max(Math.min(SMALL_MAX, rowH / 1.15), SMALL_MIN) : 0;
+  const addrSize = hasAddr ? Math.max(Math.min(SMALL_MAX, rowH / 1.15), SMALL_MIN) : 0;
+
+  // ---- Empilement top-down (le haut de la 1ere ligne s'aligne sur le haut du logo)
+  let topCursor = P;
+  const nameBlocks = nameLines.map((line) => {
+    const t = topCursor;
+    topCursor += nameSize * 1.15;
+    return { line, top: t };
+  });
+  const sloganTop = hasSlogan ? topCursor : null;
+  if (hasSlogan) topCursor += sloganSize * 1.15;
+  const adresseTop = hasAddr ? topCursor : null;
+
+  // ---- Titre : position fixe, toujours calee sur la hauteur du logo
+  const titleTop = P + logoH + u(11);
+
+  const titleBlockH = u(10) * 1.25; // hauteur visuelle du titre (police 10, line-height ~1.25)
+  const rowsTop = titleTop + titleBlockH + u(2);
   const photoTop = rowsTop;
-  const photoH = rows.length * lineH;
+  const photoH = rows.length * lineH; // ici pas d'approximation necessaire : chaque ligne CSS a une hauteur de boite fixe
   const photoW = photoH * (35 / 45);
-  const infoLeft = u(8) + photoW + u(9);
 
   const sigW = u(54);
   const sigH = u(19);
@@ -2061,25 +2092,30 @@ function RectoPreview({ student, cls, college, year }) {
         fontFamily: 'Arial, Helvetica, sans-serif', color: '#000',
       }}
     >
-      <img src="/logo.png" alt="" style={{ position: 'absolute', left: u(5), top: u(5), width: logoW }} />
+      <img src="/logo.png" alt="" style={{ position: 'absolute', left: P, top: P, width: logoW }} />
 
-      <div style={{
-        position: 'absolute', left: u(5) + logoW + u(4), top: u(4),
-        width: headerBoxW, textAlign: 'center', lineHeight: 1.15,
-      }}>
-        {nameLines.map((line, i) => (
-          <div key={i} style={{ fontSize: nameSize, fontWeight: 700 }}>{line}</div>
-        ))}
-        {college?.slogan && (
-          <div style={{ fontSize: u(5.5), fontStyle: 'italic', marginTop: u(3) }}>{college.slogan}</div>
-        )}
-        {college?.adresse_postale ? (
-          <div style={{ fontSize: u(5.5), marginTop: u(3) }}>
-            <span style={{ marginRight: u(2) }}>✉</span>{adresseLigne}
+      <div style={{ position: 'absolute', left: P + logoW + u(4), width: headerBoxW, textAlign: 'center' }}>
+        {nameBlocks.map(({ line, top }, i) => (
+          <div key={i} style={{ position: 'absolute', left: 0, width: '100%', top, fontSize: nameSize, fontWeight: 700 }}>
+            {line}
           </div>
-        ) : college?.commune ? (
-          <div style={{ fontSize: u(5.5), marginTop: u(3) }}>{college.commune}</div>
-        ) : null}
+        ))}
+        {sloganTop !== null && (
+          <div style={{ position: 'absolute', left: 0, width: '100%', top: sloganTop, fontSize: sloganSize, fontStyle: 'italic' }}>
+            {college.slogan}
+          </div>
+        )}
+        {adresseTop !== null && (
+          college?.adresse_postale ? (
+            <div style={{ position: 'absolute', left: 0, width: '100%', top: adresseTop, fontSize: addrSize }}>
+              <span style={{ marginRight: u(2) }}>✉</span>{adresseLigne}
+            </div>
+          ) : (
+            <div style={{ position: 'absolute', left: 0, width: '100%', top: adresseTop, fontSize: addrSize }}>
+              {college.commune}
+            </div>
+          )
+        )}
       </div>
 
       <div style={{
@@ -2105,7 +2141,7 @@ function RectoPreview({ student, cls, college, year }) {
         Mle : {student?.matricule || ''}
       </div>
 
-      <div style={{ position: 'absolute', left: infoLeft, top: rowsTop, right: u(5) }}>
+      <div style={{ position: 'absolute', left: u(8) + photoW + u(9), top: rowsTop, right: u(5) }}>
         {rows.map(([label, value]) => (
           <div key={label} style={{ height: lineH, fontSize: labelSize, whiteSpace: 'nowrap', overflow: 'hidden' }}>
             <span style={{ textDecoration: 'underline' }}>{label}</span>
