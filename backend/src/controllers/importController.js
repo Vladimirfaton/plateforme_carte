@@ -63,7 +63,30 @@ const toISODate = (value) => {
   return null;
 };
 
-const cell = (v) => (v == null ? '' : String(v).trim());
+const cell = (v) => {
+  if (v == null) return '';
+  if (typeof v === 'object' && !(v instanceof Date)) {
+    if (v.result != null) return String(v.result).trim();
+    if (Array.isArray(v.richText)) return v.richText.map((t) => t.text).join('').trim();
+    if (v.text != null) return String(v.text).trim();
+    return '';
+  }
+  return String(v).trim();
+};
+
+const pickSheet = (workbook) => {
+  for (const ws of workbook.worksheets) {
+    const limit = Math.min(ws.rowCount, 15);
+    for (let i = 1; i <= limit; i += 1) {
+      const vals = ws.getRow(i).values;
+      const headers = Array.isArray(vals) ? vals.slice(1).map((v) => normalizeHeader(cell(v))) : [];
+      if (headers.some((h) => h.includes('matricule'))) {
+        return { worksheet: ws, headerIndex: i, headers };
+      }
+    }
+  }
+  return null;
+};
 
 const findKeyIndex = (headers, candidates) => {
   for (const candidate of candidates) {
@@ -120,21 +143,21 @@ export const validateExcelFile = async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.readFile(req.file.path);
 
-    const worksheet = workbook.worksheets[0];
-    if (!worksheet) {
-      return res.status(400).json({ error: 'Aucune feuille trouvée' });
+        const found = pickSheet(workbook);
+    if (!found) {
+      const names = workbook.worksheets.map((w) => w.name).join(', ');
+      return res.status(400).json({
+        error: `Colonne « Matricule » introuvable. Feuilles lues : ${names}`,
+      });
     }
 
+    const { worksheet, headerIndex, headers } = found;
     const rows = [];
     const errors = [];
 
-    const headerRow = worksheet.getRow(1);
-    const rawHeaders = Array.isArray(headerRow?.values) ? headerRow.values.slice(1) : [];
-    const headers = rawHeaders.map(normalizeHeader);
-
     worksheet.eachRow((row, index) => {
-      if (index === 1) return;
-
+      if (index <= headerIndex) return;
+      
       const student = parseExcelRow(row, headers);
       if (!student) return;
 
