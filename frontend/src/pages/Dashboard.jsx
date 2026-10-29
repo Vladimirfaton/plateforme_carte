@@ -11,7 +11,7 @@ import ObservationsPanel from '../components/ObservationsPanel';
 import {
   generateBrouillonPDF, generateCollegeBrouillonPDF,
   generateFinalCardsPDF, generateSingleCardPDF, generateCardImages,
-  printFinalCards, getSchoolYear, DEFAULT_CARD_MM, wrapText, fitTitleSize,
+  printFinalCards, getSchoolYear, DEFAULT_CARD_MM, wrapText, fitTitleSize, fitFirstNames,
 } from '../utils/pdfUtils';
 
 const NIVEAU_ORDRE = ['6ème', '5ème', '4ème', '3ème', '2nde', '1ère', 'Tle', 'Terminale'];
@@ -2084,6 +2084,14 @@ function RectoPreview({ student, cls, college, year }) {
   const sigW = u(54);
   const sigH = u(19);
 
+  const infoX = u(8) + photoW + u(9);
+  const infoW = PREVIEW_W - infoX - u(5);
+
+  const mleText = `Mle : ${student?.matricule || ''}`;
+  const mleBoxW = (photoW / 2 + u(8) - u(3)) * 2;
+  let mleSize = u(7);
+  while (mleSize > u(5) && measureTextPx(mleText, mleSize, 'bold') > mleBoxW) mleSize -= 0.1;
+
   return (
     <div
       style={{
@@ -2135,19 +2143,32 @@ function RectoPreview({ student, cls, college, year }) {
         )}
       </div>
       <div style={{
-        position: 'absolute', left: u(8), top: photoTop + photoH + u(2),
-        width: photoW, textAlign: 'center', fontSize: u(7), fontWeight: 700,
+        position: 'absolute', left: u(8) + photoW / 2 - mleBoxW / 2, top: photoTop + photoH + u(2),
+        width: mleBoxW, textAlign: 'center', fontSize: mleSize, fontWeight: 700, whiteSpace: 'nowrap',
       }}>
-        Mle : {student?.matricule || ''}
+        {mleText}
       </div>
 
       <div style={{ position: 'absolute', left: u(8) + photoW + u(9), top: rowsTop, right: u(5) }}>
-        {rows.map(([label, value]) => (
-          <div key={label} style={{ height: lineH, fontSize: labelSize, whiteSpace: 'nowrap', overflow: 'hidden' }}>
-            <span style={{ textDecoration: 'underline' }}>{label}</span>
-            <span style={{ fontWeight: 700, marginLeft: u(6) }}>{value}</span>
-          </div>
-        ))}
+                {rows.map(([label, value]) => {
+          let text = value;
+          let size = labelSize;
+          if (label === 'Prénom(s) :') {
+            const lw = measureTextPx(label, labelSize, 'normal');
+            const r = fitFirstNames(
+              (t, sz) => measureTextPx(t, sz, 'bold'),
+              value, infoW - lw - u(6), labelSize, u(6.5)
+            );
+            text = r.text;
+            size = r.size;
+          }
+          return (
+            <div key={label} style={{ height: lineH, fontSize: labelSize, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+              <span style={{ textDecoration: 'underline' }}>{label}</span>
+              <span style={{ fontWeight: 700, marginLeft: u(6), fontSize: size }}>{text}</span>
+            </div>
+          );
+        })}
       </div>
 
       <Tricolor left={(PREVIEW_W - u(85)) / 2} top={PREVIEW_H - u(8) - u(4.5)} width={u(85)} height={u(4.5)} />
