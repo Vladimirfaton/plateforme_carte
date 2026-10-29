@@ -182,7 +182,7 @@ const abbreviateFirstNames = (prenoms, keep = 2) => {
   return [...parts.slice(0, keep), ...initials].join(' ');
 };
 
-const fitFirstNames = (measure, prenoms, maxWidth, maxSize, minSize) => {
+export const fitFirstNames = (measure, prenoms, maxWidth, maxSize, minSize) => {
   const full = String(prenoms || '').trim().replace(/\s+/g, ' ');
   const candidates = [full, abbreviateFirstNames(full, 2)];
   for (const text of candidates) {
