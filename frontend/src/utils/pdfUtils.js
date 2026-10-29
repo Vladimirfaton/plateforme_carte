@@ -168,7 +168,32 @@ const drawCentered = (page, text, font, size, boxX, boxW, y, color = BLACK) => {
   const w = font.widthOfTextAtSize(str, size);
   page.drawText(str, { x: boxX + (boxW - w) / 2, y, size, font, color });
 };
+const fitFontSize = (font, text, maxWidth, maxSize, minSize) => {
+  const str = sanitize(text);
+  let size = maxSize;
+  while (size > minSize && font.widthOfTextAtSize(str, size) > maxWidth) size -= 0.1;
+  return size;
+};
 
+const abbreviateFirstNames = (prenoms, keep = 2) => {
+  const parts = String(prenoms || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= keep) return parts.join(' ');
+  const initials = parts.slice(keep).map((p) => `${p.charAt(0).toUpperCase()}.`);
+  return [...parts.slice(0, keep), ...initials].join(' ');
+};
+
+const fitFirstNames = (measure, prenoms, maxWidth, maxSize, minSize) => {
+  const full = String(prenoms || '').trim().replace(/\s+/g, ' ');
+  const candidates = [full, abbreviateFirstNames(full, 2)];
+  for (const text of candidates) {
+    let size = maxSize;
+    while (size >= minSize) {
+      if (measure(text, size) <= maxWidth) return { text, size };
+      size -= 0.1;
+    }
+  }
+  return { text: candidates[candidates.length - 1], size: minSize };
+};
 // Calcule la plus grande taille de police faisant tenir `text` sur une ligne, en visant
 // une largeur cible (ex: 70% de la carte), plafonnee par [minSize, maxSize] et par une
 // largeur de securite (maxWidth) a ne jamais depasser. Si meme au corps minimal le texte
@@ -335,14 +360,17 @@ const drawRecto = (page, ox, oy, W, H, ctx) => {
       width: w, height: h,
     });
   }
-  drawCentered(page, `Mle : ${student?.matricule || ''}`, bold, u(7), photoX, photoW, photoY - u(9));
+  const mleText = `Mle : ${student?.matricule || ''}`;
+  const mleBoxW = (photoW / 2 + u(8) - u(3)) * 2;
+  const mleSize = fitFontSize(bold, mleText, mleBoxW, u(7), u(5));
+  drawCentered(page, mleText, bold, mleSize, photoX + photoW / 2 - mleBoxW / 2, mleBoxW, photoY - u(9));
 
   // ---- Colonne d'informations
   const infoX = photoX + photoW + u(9);
   const infoW = W - (infoX - ox) - P;
 
   let ry = titleY - u(10);
-  rows.forEach(([label, value]) => {
+    rows.forEach(([label, value]) => {
     const lw = font.widthOfTextAtSize(label, labelSize);
     page.drawText(label, { x: infoX, y: ry, size: labelSize, font, color: BLACK });
     page.drawLine({
@@ -351,12 +379,19 @@ const drawRecto = (page, ox, oy, W, H, ctx) => {
       thickness: 0.4, color: BLACK,
     });
     const vx = infoX + lw + u(6);
-    page.drawText(truncateText(bold, value, valueSize, infoW - (vx - infoX)), {
-      x: vx, y: ry, size: valueSize, font: bold, color: BLACK,
+    const maxW = infoW - (vx - infoX);
+    let text = value;
+    let size = valueSize;
+    if (label === 'Prénom(s) :') {
+      const r = fitFirstNames((t, sz) => bold.widthOfTextAtSize(sanitize(t), sz), value, maxW, valueSize, u(6.5));
+      text = r.text;
+      size = r.size;
+    }
+    page.drawText(truncateText(bold, text, size, maxW), {
+      x: vx, y: ry, size, font: bold, color: BLACK,
     });
     ry -= lineH;
   });
-
   // ---- Bande tricolore centree sur toute la largeur de la carte
   const bandW = u(85);
   drawTricolor(page, ox + (W - bandW) / 2, oy + u(8), bandW, u(4.5));
@@ -830,15 +865,27 @@ const drawRectoCanvas = (ctx, { student, classInfo, collegeInfo, logoImg, photoI
     const { w, h } = fitContain(photoImg.width, photoImg.height, photoW, photoH);
     d.image(photoImg, photoX + (photoW - w) / 2, photoY + (photoH - h) / 2, w, h);
   }
-  d.text(`Mle : ${student?.matricule || ''}`, photoX + photoW / 2, photoY - u(9), u(7), 'bold', '#000', 'center');
+  const mleText = `Mle : ${student?.matricule || ''}`;
+  const mleBoxW = (photoW / 2 + photoX - u(3)) * 2;
+  let mleSize = u(7);
+  while (mleSize > u(5) && d.measure(mleText, mleSize, 'bold') > mleBoxW) mleSize -= 0.1;
+  d.text(mleText, photoX + photoW / 2, photoY - u(9), mleSize, 'bold', '#000', 'center');
 
   const infoX = photoX + photoW + u(9);
   let ry = titleY - u(10);
-  rows.forEach(([label, value]) => {
+   rows.forEach(([label, value]) => {
     const lw = d.measure(label, labelSize, 'normal');
     d.text(label, infoX, ry, labelSize, 'normal', '#000');
     d.line(infoX, ry - u(1.6), infoX + lw, ry - u(1.6), '#000', Math.max(1, u(0.4)));
-    d.text(value, infoX + lw + u(6), ry, labelSize, 'bold', '#000');
+    const vx = infoX + lw + u(6);
+    let text = value;
+    let size = labelSize;
+    if (label === 'Prénom(s) :') {
+      const r = fitFirstNames((t, sz) => d.measure(t, sz, 'bold'), value, W - P - vx, labelSize, u(6.5));
+      text = r.text;
+      size = r.size;
+    }
+    d.text(text, vx, ry, size, 'bold', '#000');
     ry -= lineH;
   });
 
