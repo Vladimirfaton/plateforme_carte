@@ -118,7 +118,8 @@ const parseExcelRow = (row, headers) => {
   const dateNaissance = toISODate(values[findKeyIndex(headerList, ['date de naissance', 'date naissance', 'ne le'])] ?? '');
   const lieu = getValue(['lieu de naissance', 'lieu naissance', 'lieu']);
   const nationalite = getValue(['nationalite', 'nationalité']);
-  const adresse = getValue(['adresse', 'contact parent', 'telephone parent', 'telephone']);
+  const rawContact = getValue(['adresse', 'contact parent', 'telephone parent', 'telephone']);
+  const adresse = /^1\d{8}$/.test(rawContact) ? `0${rawContact}` : rawContact;
 
   if (!matricule && !nom && !prenom) return null;
 
